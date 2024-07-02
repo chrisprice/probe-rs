@@ -8,7 +8,9 @@ pub mod transfer;
 use crate::probe::cmsisdap::commands::general::info::PacketSizeCommand;
 use crate::probe::usb_util::InterfaceExt;
 use crate::probe::DebugProbeError;
-use std::io::ErrorKind;
+use std::cell::RefCell;
+use std::io::{ErrorKind, Read, Write};
+use std::net::TcpStream;
 use std::str::Utf8Error;
 use std::time::Duration;
 
@@ -91,6 +93,10 @@ pub enum CmsisDapDevice {
         max_packet_size: usize,
         swo_ep: Option<(u8, usize)>,
     },
+
+    Tcp {
+        socket: RefCell<TcpStream>,
+    },
 }
 
 impl CmsisDapDevice {
@@ -107,6 +113,11 @@ impl CmsisDapDevice {
             CmsisDapDevice::V2 { handle, in_ep, .. } => handle
                 .read_bulk(*in_ep, buf, USB_TIMEOUT)
                 .map_err(SendError::UsbError),
+            CmsisDapDevice::Tcp { socket } => {
+                todo!();
+                let mut socket = socket.borrow_mut();
+                socket.read(buf).map_err(SendError::UsbError)
+            }
         }
     }
 
@@ -119,6 +130,12 @@ impl CmsisDapDevice {
                 handle
                     .write_bulk(*out_ep, &buf[1..], USB_TIMEOUT)
                     .map_err(SendError::UsbError)
+            }
+            CmsisDapDevice::Tcp { socket } => {
+                // Skip first byte as it's set to 0 for HID transfers
+                let mut socket = socket.borrow_mut();
+                let count = socket.write(&buf[1..]).unwrap();
+                Ok(count)
             }
         }
     }
@@ -157,6 +174,15 @@ impl CmsisDapDevice {
                     }
                 }
             }
+            CmsisDapDevice::Tcp { socket } => {
+                let mut discard = vec![0u8; 64];
+                loop {
+                    match socket.borrow_mut().read(&mut discard) {
+                        Ok(n) if n != 0 => continue,
+                        _ => break,
+                    }
+                }
+            }
         }
     }
 
@@ -179,6 +205,7 @@ impl CmsisDapDevice {
             } => {
                 *max_packet_size = packet_size;
             }
+            CmsisDapDevice::Tcp { socket } => todo!(),
         }
     }
 
@@ -220,6 +247,7 @@ impl CmsisDapDevice {
         match self {
             CmsisDapDevice::V1 { .. } => false,
             CmsisDapDevice::V2 { swo_ep, .. } => swo_ep.is_some(),
+            CmsisDapDevice::Tcp { socket } => todo!(),
         }
     }
 
@@ -248,6 +276,7 @@ impl CmsisDapDevice {
                 }
                 None => Err(CmsisDapError::SwoModeNotAvailable),
             },
+            CmsisDapDevice::Tcp { socket } => todo!(),
         }
     }
 }
@@ -345,6 +374,7 @@ fn send_command_inner<Req: Request>(
         CmsisDapDevice::V2 {
             max_packet_size, ..
         } => *max_packet_size + 1,
+        CmsisDapDevice::Tcp { .. } => 64,
     };
     let mut buffer = vec![0; buffer_len];
 

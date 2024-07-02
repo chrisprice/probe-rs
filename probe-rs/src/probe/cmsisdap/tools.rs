@@ -1,3 +1,5 @@
+use std::{cell::RefCell, net::TcpStream, time::Duration};
+
 use super::CmsisDapDevice;
 use crate::probe::{
     cmsisdap::CmsisDapFactory, DebugProbeInfo, DebugProbeSelector, ProbeCreationError,
@@ -233,6 +235,24 @@ pub fn open_device_from_selector(
     selector: &DebugProbeSelector,
 ) -> Result<CmsisDapDevice, ProbeCreationError> {
     tracing::trace!("Attempting to open device matching {}", selector);
+
+    if let Some(ref serial) = selector.serial_number {
+        tracing::debug!("Attempting to open device by serial number: {}", serial);
+        let socket = TcpStream::connect(serial).map_err(|_e| {
+            tracing::debug!("Failed to open device by serial number: {}, {}", serial, _e);
+            ProbeCreationError::NotFound
+        })?;
+        socket.set_nonblocking(false).unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        socket
+            .set_write_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        return Ok(CmsisDapDevice::Tcp {
+            socket: RefCell::new(socket),
+        });
+    }
 
     // We need to use nusb to detect the proper HID interface to use
     // if a probe has multiple HID interfaces. The hidapi lib unfortunately
