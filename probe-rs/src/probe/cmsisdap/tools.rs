@@ -242,15 +242,9 @@ pub fn open_device_from_selector(
             tracing::debug!("Failed to open device by serial number: {}, {}", serial, _e);
             ProbeCreationError::NotFound
         })?;
-        socket.set_nonblocking(false).unwrap();
-        socket
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        socket
-            .set_write_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
         return Ok(CmsisDapDevice::Tcp {
             socket: RefCell::new(socket),
+            max_packet_size: 64,
         });
     }
 

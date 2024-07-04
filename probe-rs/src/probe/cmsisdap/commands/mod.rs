@@ -15,6 +15,7 @@ use std::str::Utf8Error;
 use std::time::Duration;
 
 const USB_TIMEOUT: Duration = Duration::from_millis(1000);
+const TCP_TIMEOUT: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, thiserror::Error)]
 pub enum CmsisDapError {
@@ -96,6 +97,7 @@ pub enum CmsisDapDevice {
 
     Tcp {
         socket: RefCell<TcpStream>,
+        max_packet_size: usize,
     },
 }
 
@@ -113,9 +115,9 @@ impl CmsisDapDevice {
             CmsisDapDevice::V2 { handle, in_ep, .. } => handle
                 .read_bulk(*in_ep, buf, USB_TIMEOUT)
                 .map_err(SendError::UsbError),
-            CmsisDapDevice::Tcp { socket } => {
-                todo!();
+            CmsisDapDevice::Tcp { socket, .. } => {
                 let mut socket = socket.borrow_mut();
+                socket.set_read_timeout(Some(TCP_TIMEOUT));
                 socket.read(buf).map_err(SendError::UsbError)
             }
         }
@@ -131,9 +133,10 @@ impl CmsisDapDevice {
                     .write_bulk(*out_ep, &buf[1..], USB_TIMEOUT)
                     .map_err(SendError::UsbError)
             }
-            CmsisDapDevice::Tcp { socket } => {
+            CmsisDapDevice::Tcp { socket, .. } => {
                 // Skip first byte as it's set to 0 for HID transfers
                 let mut socket = socket.borrow_mut();
+                socket.set_write_timeout(Some(TCP_TIMEOUT));
                 let count = socket.write(&buf[1..]).unwrap();
                 Ok(count)
             }
@@ -174,10 +177,15 @@ impl CmsisDapDevice {
                     }
                 }
             }
-            CmsisDapDevice::Tcp { socket } => {
-                let mut discard = vec![0u8; 64];
+            CmsisDapDevice::Tcp {
+                socket,
+                max_packet_size,
+            } => {
+                let mut discard = vec![0u8; *max_packet_size];
+                let mut socket = socket.borrow_mut();
+                socket.set_read_timeout(Some(Duration::from_millis(1)));
                 loop {
-                    match socket.borrow_mut().read(&mut discard) {
+                    match socket.read(&mut discard) {
                         Ok(n) if n != 0 => continue,
                         _ => break,
                     }
@@ -202,10 +210,13 @@ impl CmsisDapDevice {
             CmsisDapDevice::V2 {
                 ref mut max_packet_size,
                 ..
+            }
+            | CmsisDapDevice::Tcp {
+                ref mut max_packet_size,
+                ..
             } => {
                 *max_packet_size = packet_size;
             }
-            CmsisDapDevice::Tcp { socket } => todo!(),
         }
     }
 
@@ -247,7 +258,7 @@ impl CmsisDapDevice {
         match self {
             CmsisDapDevice::V1 { .. } => false,
             CmsisDapDevice::V2 { swo_ep, .. } => swo_ep.is_some(),
-            CmsisDapDevice::Tcp { socket } => todo!(),
+            CmsisDapDevice::Tcp { .. } => todo!(),
         }
     }
 
@@ -276,7 +287,7 @@ impl CmsisDapDevice {
                 }
                 None => Err(CmsisDapError::SwoModeNotAvailable),
             },
-            CmsisDapDevice::Tcp { socket } => todo!(),
+            CmsisDapDevice::Tcp { .. } => todo!(),
         }
     }
 }
@@ -373,8 +384,10 @@ fn send_command_inner<Req: Request>(
         CmsisDapDevice::V1 { report_size, .. } => *report_size + 1,
         CmsisDapDevice::V2 {
             max_packet_size, ..
+        }
+        | CmsisDapDevice::Tcp {
+            max_packet_size, ..
         } => *max_packet_size + 1,
-        CmsisDapDevice::Tcp { .. } => 64,
     };
     let mut buffer = vec![0; buffer_len];
 
