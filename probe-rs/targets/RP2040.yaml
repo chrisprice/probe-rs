@@ -64,7 +64,7 @@ variants:
   - algo
 - name: RP2040_SELFDEBUG_TARGET_SELECT
   cores:
-  - name: core0
+  - name: core1
     type: armv6m
     core_access_options: !Arm
       ap: 0
@@ -75,37 +75,37 @@ variants:
       start: 0x20000000
       end: 0x20042000
     cores:
-    - core0
+    - core1
   - !Ram
     range:
       start: 0x21000000
       end: 0x21010000
     cores:
-    - core0
+    - core1
   - !Ram
     range:
       start: 0x21010000
       end: 0x21020000
     cores:
-    - core0
+    - core1
   - !Ram
     range:
       start: 0x21020000
       end: 0x21030000
     cores:
-    - core0
+    - core1
   - !Ram
     range:
       start: 0x21030000
       end: 0x21040000
     cores:
-    - core0
+    - core1
   - !Nvm
     range:
       start: 0x10000000
       end: 0x18000000
     cores:
-    - core0
+    - core1
     access:
       boot: true
   flash_algorithms:
