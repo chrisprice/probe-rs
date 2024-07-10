@@ -236,18 +236,6 @@ pub fn open_device_from_selector(
 ) -> Result<CmsisDapDevice, ProbeCreationError> {
     tracing::trace!("Attempting to open device matching {}", selector);
 
-    if let Some(ref serial) = selector.serial_number {
-        tracing::debug!("Attempting to open device by serial number: {}", serial);
-        let socket = TcpStream::connect(serial).map_err(|_e| {
-            tracing::debug!("Failed to open device by serial number: {}, {}", serial, _e);
-            ProbeCreationError::NotFound
-        })?;
-        return Ok(CmsisDapDevice::Tcp {
-            socket: RefCell::new(socket),
-            max_packet_size: 64,
-        });
-    }
-
     // We need to use nusb to detect the proper HID interface to use
     // if a probe has multiple HID interfaces. The hidapi lib unfortunately
     // offers no method to get the interface description string directly,
@@ -279,6 +267,19 @@ pub fn open_device_from_selector(
         }
     } else {
         tracing::debug!("No devices matched using nusb");
+    }
+
+
+    if let Some(ref serial) = selector.serial_number {
+        tracing::debug!("Attempting to open device by serial number: {}", serial);
+        let socket = TcpStream::connect(serial).map_err(|_e| {
+            tracing::debug!("Failed to open device by serial number: {}, {}", serial, _e);
+            ProbeCreationError::NotFound
+        })?;
+        return Ok(CmsisDapDevice::Tcp {
+            socket: RefCell::new(socket),
+            max_packet_size: 64,
+        });
     }
 
     // If nusb failed or the device didn't support v2, try using hidapi to open in v1 mode.
