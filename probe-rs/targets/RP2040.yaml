@@ -238,11 +238,11 @@ flash_algorithms:
 - name: nop_ipc
   description: do nothing, wait for selfdebug to pick things up
   default: true
-  instructions: gLUAr4KwASNbBxtoAZMBqwGbmEeAtQCvgrABIUkHAZEBqQGZCx0AIQpGmEeAtQCvgrABI1sHAZMBqwGbCDOYR4C1AK+CsAEhSQcBkQGpAZsMMwAhCkaYRw==
+  instructions: gLUArwEjWwcbaJhHgLUArwJJC2gAIQpGmEfARgQAACCAtQCvAUsbaJhHwEYIAAAggLUArwJJC2gAIQpGmEfARgwAACA=
   pc_init: 0x1
-  pc_uninit: 0x15
-  pc_program_page: 0x2d
-  pc_erase_sector: 0x41
+  pc_uninit: 0xd
+  pc_program_page: 0x21
+  pc_erase_sector: 0x31
   data_section_offset: 0x0
   flash_properties:
     address_range:
