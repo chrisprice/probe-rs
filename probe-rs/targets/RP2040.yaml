@@ -101,12 +101,12 @@ variants:
 #      end: 0x21030000
 #    cores:
 #    - core1
-#  - !Ram
-#    range:
-#      start: 0x21030000
-#      end: 0x21040000
-#    cores:
-#    - core1
+  - !Ram
+    range:
+      start: 0x21030000
+      end: 0x21040000
+    cores:
+    - core1
   - !Nvm
     range:
       start: 0x10000000
