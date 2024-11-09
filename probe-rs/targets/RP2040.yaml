@@ -103,7 +103,7 @@ variants:
 #    - core1
   - !Ram
     range:
-      start: 0x21030000
+      start: 0x2003FC00
       end: 0x21040000
     cores:
     - core1
@@ -238,11 +238,14 @@ flash_algorithms:
 - name: nop_ipc
   description: do nothing, wait for selfdebug to pick things up
   default: true
-  instructions: gLUArwEjWwcbaJhHgLUArwJJC2gAIQpGmEfARgQAACCAtQCvAUsbaJhHwEYIAAAggLUArwJJC2gAIQpGmEfARgwAACA=
+  instructions: ELV8Rko8JGigRxC9AAAAABC1fEZKPCRooEcQvQAAAAAQtXxGSjwkaKBHEL0AAAAAELV8Rko8JGigRxC9AAAAAA==
+  load_address: 0x2003FC44
   pc_init: 0x1
-  pc_uninit: 0xd
+  pc_uninit: 0x11
   pc_program_page: 0x21
   pc_erase_sector: 0x31
+  # stack_size: 64
+  data_load_address: 0x50100000
   data_section_offset: 0x0
   flash_properties:
     address_range:
