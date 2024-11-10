@@ -674,6 +674,33 @@ impl DebugCli {
         });
 
         cli.add_command(Command {
+            name: "regw",
+            help_text: "Write to a register",
+            function: |cli_data, args| {
+                let register_name = args.get(0).ok_or(CliError::MissingArgument)?;
+                let value: u32 = get_int_argument(args, 1)?;
+
+                let register_file = cli_data.core.registers();
+
+                for register in register_file.core_registers() {
+                    if register.name().to_ascii_lowercase() == register_name.to_ascii_lowercase() {
+                        cli_data.core.write_core_reg(register, value)?;
+                        
+                        let value: RegisterValue = cli_data.core.read_core_reg(register)?;
+                        println!("{:10}: {:#}", register.name(), value);
+
+                        return Ok(CliState::Continue);
+                    }
+
+                }
+
+                println!("Register not found: {register_name}");
+
+                Ok(CliState::Continue)
+            },
+        });
+
+        cli.add_command(Command {
             name: "fp_regs",
             help_text: "Show floating point register values",
 
