@@ -238,10 +238,12 @@ flash_algorithms:
 - name: nop_ipc
   description: do nothing, wait for selfdebug to pick things up
   default: true
-  instructions: /EwB4PxM/+cQtaBHEL0=
+  instructions: +kwF4PpMA+D6TAHg+kz/5wC1oEcAvQ==
   load_address: 0x2103FC04
-  pc_program_page: 0x1
-  pc_erase_sector: 0x5
+  pc_init: 0x1
+  pc_uninit: 0x5
+  pc_program_page: 0x9
+  pc_erase_sector: 0xd
   data_load_address: 0x50100000
   data_section_offset: 0x0
   flash_properties:
