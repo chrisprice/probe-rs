@@ -1,3 +1,5 @@
+use std::io::ErrorKind::*;
+use std::net::SocketAddr;
 use std::{
     cell::RefCell,
     io,
@@ -6,87 +8,79 @@ use std::{
     time::Duration,
 };
 
-// use tracing;
-
 const TIMEOUT: Duration = Duration::from_millis(10000);
+const ATTEMPTS: usize = 5;
 
-/// Auto-reconnecting TCP socket.
 pub struct DurableStream {
+    address: SocketAddr,
     socket: RefCell<TcpStream>,
 }
 
 impl DurableStream {
-    pub fn new(addr: impl ToSocketAddrs) -> Result<Self, io::Error> {
-        let socket = TcpStream::connect(addr)?;
+    pub fn new(addr: &impl ToSocketAddrs) -> Result<Self, io::Error> {
+        let addr = addr.to_socket_addrs()?.next().expect("Valid address");
+        let socket = TcpStream::connect_timeout(&addr, TIMEOUT)?;
+        let address = socket.peer_addr().expect("Valid peer address");
         return Ok(DurableStream {
+            address,
             socket: RefCell::new(socket),
         });
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize, io::Error> {
+    fn with_reconnect(
+        &self,
+        mut func: impl FnMut() -> Result<usize, io::Error>,
+    ) -> Result<usize, io::Error> {
+        for attempt in 1..=ATTEMPTS {
+            match func() {
+                Ok(count) => return Ok(count),
+                Err(error) => {
+                    if is_disconnect_error(&error) {
+                        tracing::debug!(
+                            "Reconnect attempt ({}/{}) due to error: {:?}",
+                            attempt,
+                            ATTEMPTS,
+                            error
+                        );
+                        if let Ok(socket) = TcpStream::connect_timeout(&self.address, TIMEOUT) {
+                            *self.socket.borrow_mut() = socket;
+                        } else {
+                            return Err(error);
+                        }
+                    } else {
+                        return Err(error);
+                    }
+                }
+            }
+        }
+        Err(io::Error::new(
+            TimedOut,
+            format!("Failed to reconnect after {} attempts", ATTEMPTS),
+        ))
+    }
+
+    fn read_inner(&self, buf: &mut [u8]) -> Result<usize, io::Error> {
         let mut socket = self.socket.borrow_mut();
         socket
             .set_read_timeout(Some(TIMEOUT))
             .expect("Non-zero read timeout");
-        match socket.read(buf) {
-            Ok(count) => Ok(count),
-            Err(e) => match e.kind() {
-                io::ErrorKind::NotFound => todo!(),
-                io::ErrorKind::PermissionDenied => todo!(),
-                io::ErrorKind::ConnectionRefused => todo!(),
-                io::ErrorKind::ConnectionReset => todo!(),
-                io::ErrorKind::ConnectionAborted => todo!(),
-                io::ErrorKind::NotConnected => todo!(),
-                io::ErrorKind::AddrInUse => todo!(),
-                io::ErrorKind::AddrNotAvailable => todo!(),
-                io::ErrorKind::BrokenPipe => todo!(),
-                io::ErrorKind::AlreadyExists => todo!(),
-                io::ErrorKind::WouldBlock => todo!(),
-                io::ErrorKind::InvalidInput => todo!(),
-                io::ErrorKind::InvalidData => todo!(),
-                io::ErrorKind::TimedOut => todo!(),
-                io::ErrorKind::WriteZero => todo!(),
-                io::ErrorKind::Interrupted => todo!(),
-                io::ErrorKind::Unsupported => todo!(),
-                io::ErrorKind::UnexpectedEof => todo!(),
-                io::ErrorKind::OutOfMemory => todo!(),
-                io::ErrorKind::Other => todo!(),
-                _ => todo!(),
-            },
-        }
+        socket.read(buf)
+    }
+
+    pub fn read(&self, buf: &mut [u8]) -> Result<usize, io::Error> {
+        self.with_reconnect(|| self.read_inner(buf))
+    }
+
+    fn write_inner(&self, buf: &[u8]) -> Result<usize, io::Error> {
+        let mut socket = self.socket.borrow_mut();
+        socket
+            .set_write_timeout(Some(TIMEOUT))
+            .expect("Non-zero write timeout");
+        socket.write(buf)
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<usize, io::Error> {
-        let mut socket = self.socket.borrow_mut();
-        // socket
-        //     .set_write_timeout(Some(TIMEOUT))
-        //     .expect("Non-zero write timeout");
-        match socket.write(buf) {
-            Ok(count) => Ok(count),
-            Err(e) => match e.kind() {
-                io::ErrorKind::NotFound => todo!(),
-                io::ErrorKind::PermissionDenied => todo!(),
-                io::ErrorKind::ConnectionRefused => todo!(),
-                io::ErrorKind::ConnectionReset => todo!(),
-                io::ErrorKind::ConnectionAborted => todo!(),
-                io::ErrorKind::NotConnected => todo!(),
-                io::ErrorKind::AddrInUse => todo!(),
-                io::ErrorKind::AddrNotAvailable => todo!(),
-                io::ErrorKind::BrokenPipe => todo!(),
-                io::ErrorKind::AlreadyExists => todo!(),
-                io::ErrorKind::WouldBlock => todo!(),
-                io::ErrorKind::InvalidInput => todo!(),
-                io::ErrorKind::InvalidData => todo!(),
-                io::ErrorKind::TimedOut => todo!(),
-                io::ErrorKind::WriteZero => todo!(),
-                io::ErrorKind::Interrupted => todo!(),
-                io::ErrorKind::Unsupported => todo!(),
-                io::ErrorKind::UnexpectedEof => todo!(),
-                io::ErrorKind::OutOfMemory => todo!(),
-                io::ErrorKind::Other => todo!(),
-                _ => todo!(),
-            },
-        }
+        self.with_reconnect(|| self.write_inner(buf))
     }
 
     pub fn drain(&self, buffer: &mut [u8]) {
@@ -97,8 +91,20 @@ impl DurableStream {
         loop {
             match socket.read(buffer) {
                 Ok(n) if n != 0 => continue,
+                // TODO: Should this reconnect?
                 _ => break,
             }
         }
+    }
+}
+
+// The following is heavily inspired by -
+// https://github.com/craftytrickster/stubborn-io/blob/bda25e38345f7bc2886877897ba70c2742867df1/src/tokio/io.rs#L27C5-L43C6
+
+fn is_disconnect_error(err: &io::Error) -> bool {
+    match err.kind() {
+        NotFound | PermissionDenied | ConnectionRefused | ConnectionReset | ConnectionAborted
+        | NotConnected | AddrInUse | AddrNotAvailable | BrokenPipe | AlreadyExists => true,
+        _ => false,
     }
 }
