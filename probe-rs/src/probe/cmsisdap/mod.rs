@@ -1,5 +1,6 @@
 //! CMSIS-DAP probe implementation.
 mod commands;
+mod tcp;
 mod tools;
 
 use crate::{

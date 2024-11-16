@@ -8,14 +8,13 @@ pub mod transfer;
 use crate::probe::cmsisdap::commands::general::info::PacketSizeCommand;
 use crate::probe::usb_util::InterfaceExt;
 use crate::probe::DebugProbeError;
-use std::cell::RefCell;
-use std::io::{ErrorKind, Read, Write};
-use std::net::TcpStream;
+use std::io::ErrorKind;
 use std::str::Utf8Error;
 use std::time::Duration;
 
+use super::tcp::DurableStream;
+
 const USB_TIMEOUT: Duration = Duration::from_millis(1000);
-const TCP_TIMEOUT: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, thiserror::Error)]
 pub enum CmsisDapError {
@@ -96,7 +95,7 @@ pub enum CmsisDapDevice {
     },
 
     Tcp {
-        socket: RefCell<TcpStream>,
+        socket: DurableStream,
         max_packet_size: usize,
     },
 }
@@ -115,14 +114,10 @@ impl CmsisDapDevice {
             CmsisDapDevice::V2 { handle, in_ep, .. } => handle
                 .read_bulk(*in_ep, buf, USB_TIMEOUT)
                 .map_err(SendError::UsbError),
-            CmsisDapDevice::Tcp { socket, .. } => {
-                let mut socket = socket.borrow_mut();
-                socket.set_read_timeout(Some(TCP_TIMEOUT)).unwrap();
-                socket.read(buf).map_err(|e| {
-                    tracing::error!("reading tcp: {}", e);
-                    SendError::UsbError(e)
-                })
-            }
+            CmsisDapDevice::Tcp { socket, .. } => socket.read(buf).map_err(|e| {
+                tracing::error!("reading tcp: {}", e);
+                SendError::UsbError(e)
+            }),
         }
     }
 
@@ -138,10 +133,10 @@ impl CmsisDapDevice {
             }
             CmsisDapDevice::Tcp { socket, .. } => {
                 // Skip first byte as it's set to 0 for HID transfers
-                let mut socket = socket.borrow_mut();
-                //socket.set_write_timeout(Some(TCP_TIMEOUT));
-                let count = socket.write(&buf[1..]).unwrap();
-                Ok(count)
+                socket.write(&buf[1..]).map_err(|e| {
+                    tracing::error!("writing tcp: {}", e);
+                    SendError::UsbError(e)
+                })
             }
         }
     }
@@ -185,14 +180,7 @@ impl CmsisDapDevice {
                 max_packet_size,
             } => {
                 let mut discard = vec![0u8; *max_packet_size];
-                let mut socket = socket.borrow_mut();
-                socket.set_read_timeout(Some(Duration::from_millis(1))).unwrap();
-                loop {
-                    match socket.read(&mut discard) {
-                        Ok(n) if n != 0 => continue,
-                        _ => break,
-                    }
-                }
+                socket.drain(discard.as_mut_slice());
             }
         }
     }
