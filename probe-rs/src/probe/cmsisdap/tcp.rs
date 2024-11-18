@@ -17,10 +17,9 @@ pub struct DurableStream {
 }
 
 impl DurableStream {
-    pub fn new(addr: &impl ToSocketAddrs) -> Result<Self, io::Error> {
-        let addr = addr.to_socket_addrs()?.next().expect("Valid address");
-        let socket = TcpStream::connect_timeout(&addr, TIMEOUT)?;
-        let address = socket.peer_addr().expect("Valid peer address");
+    pub fn new(address: &impl ToSocketAddrs) -> Result<Self, io::Error> {
+        let address = address.to_socket_addrs()?.next().expect("A valid address");
+        let socket = TcpStream::connect_timeout(&address, TIMEOUT)?;
         return Ok(DurableStream {
             address,
             socket: RefCell::new(socket),
@@ -32,11 +31,16 @@ impl DurableStream {
         mut func: impl FnMut() -> Result<usize, io::Error>,
     ) -> Result<usize, io::Error> {
         for attempt in 1..=ATTEMPTS {
+            tracing::info!("Attempt {}/{}", attempt, ATTEMPTS);
             match func() {
                 Ok(count) => return Ok(count),
                 Err(error) => {
+                    tracing::info!(
+                        "Failed to read/write from socket due to error: {:?}",
+                        error
+                    );
                     if is_disconnect_error(&error) {
-                        tracing::debug!(
+                        tracing::info!(
                             "Reconnect attempt ({}/{}) due to error: {:?}",
                             attempt,
                             ATTEMPTS,
@@ -44,8 +48,9 @@ impl DurableStream {
                         );
                         if let Ok(socket) = TcpStream::connect_timeout(&self.address, TIMEOUT) {
                             *self.socket.borrow_mut() = socket;
+                            tracing::info!("Reconnected to socket");
                         } else {
-                            return Err(error);
+                            tracing::info!("Failed to reconnect to socket {}", error);
                         }
                     } else {
                         return Err(error);
@@ -59,28 +64,24 @@ impl DurableStream {
         ))
     }
 
-    fn read_inner(&self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        let mut socket = self.socket.borrow_mut();
-        socket
-            .set_read_timeout(Some(TIMEOUT))
-            .expect("Non-zero read timeout");
-        socket.read(buf)
-    }
-
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        self.with_reconnect(|| self.read_inner(buf))
-    }
-
-    fn write_inner(&self, buf: &[u8]) -> Result<usize, io::Error> {
-        let mut socket = self.socket.borrow_mut();
-        socket
-            .set_write_timeout(Some(TIMEOUT))
-            .expect("Non-zero write timeout");
-        socket.write(buf)
+        self.with_reconnect(|| {
+            let mut socket = self.socket.borrow_mut();
+            socket
+                .set_read_timeout(Some(TIMEOUT))
+                .expect("Non-zero read timeout");
+            socket.read(buf)
+        })
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<usize, io::Error> {
-        self.with_reconnect(|| self.write_inner(buf))
+        self.with_reconnect(|| {
+            let mut socket = self.socket.borrow_mut();
+            socket
+                .set_write_timeout(Some(TIMEOUT))
+                .expect("Non-zero write timeout");
+            socket.write(buf)
+        })
     }
 
     pub fn drain(&self, buffer: &mut [u8]) {
@@ -104,7 +105,7 @@ impl DurableStream {
 fn is_disconnect_error(err: &io::Error) -> bool {
     match err.kind() {
         NotFound | PermissionDenied | ConnectionRefused | ConnectionReset | ConnectionAborted
-        | NotConnected | AddrInUse | AddrNotAvailable | BrokenPipe | AlreadyExists => true,
+        | NotConnected | AddrInUse | AddrNotAvailable | BrokenPipe | AlreadyExists | WouldBlock => true,
         _ => false,
     }
 }
