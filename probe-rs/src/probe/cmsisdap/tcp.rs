@@ -31,16 +31,16 @@ impl DurableStream {
         mut func: impl FnMut() -> Result<usize, io::Error>,
     ) -> Result<usize, io::Error> {
         for attempt in 1..=ATTEMPTS {
-            tracing::info!("Attempt {}/{}", attempt, ATTEMPTS);
+            tracing::trace!("Attempt {}/{}", attempt, ATTEMPTS);
             match func() {
                 Ok(count) => return Ok(count),
                 Err(error) => {
-                    tracing::info!(
+                    tracing::debug!(
                         "Failed to read/write from socket due to error: {:?}",
                         error
                     );
                     if is_disconnect_error(&error) {
-                        tracing::info!(
+                        tracing::trace!(
                             "Reconnect attempt ({}/{}) due to error: {:?}",
                             attempt,
                             ATTEMPTS,
@@ -48,9 +48,9 @@ impl DurableStream {
                         );
                         if let Ok(socket) = TcpStream::connect_timeout(&self.address, TIMEOUT) {
                             *self.socket.borrow_mut() = socket;
-                            tracing::info!("Reconnected to socket");
+                            tracing::debug!("Reconnected to socket");
                         } else {
-                            tracing::info!("Failed to reconnect to socket {}", error);
+                            tracing::trace!("Failed to reconnect to socket {}", error);
                         }
                     } else {
                         return Err(error);
