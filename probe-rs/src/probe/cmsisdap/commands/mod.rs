@@ -8,7 +8,8 @@ pub mod transfer;
 use crate::probe::cmsisdap::commands::general::info::PacketSizeCommand;
 use crate::probe::usb_util::InterfaceExt;
 use crate::probe::{ProbeError, WireProtocol};
-use std::io::ErrorKind;
+use std::cell::RefCell;
+use std::io::{ErrorKind, Read, Write};
 use std::str::Utf8Error;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use self::swj::clock::SWJClockRequest;
 use self::transfer::InnerTransferBlockRequest;
 
 const USB_TIMEOUT: Duration = Duration::from_millis(1000);
+const TCP_TIMEOUT: Duration = Duration::from_millis(3000);
 
 #[derive(Debug, thiserror::Error, docsplay::Display)]
 pub enum CmsisDapError {
@@ -184,6 +186,13 @@ pub enum CmsisDapDevice {
         max_packet_size: usize,
         swo_ep: Option<(u8, usize)>,
     },
+
+    /// Unofficial CMSIS-DAP v2 over TCP.
+    /// Stores a TCP stream handle and maximum DAP packet size.
+    Tcp {
+        handle: RefCell<std::net::TcpStream>,
+        max_packet_size: usize,
+    },
 }
 
 impl CmsisDapDevice {
@@ -200,6 +209,13 @@ impl CmsisDapDevice {
             CmsisDapDevice::V2 { handle, in_ep, .. } => {
                 Ok(handle.read_bulk(*in_ep, buf, USB_TIMEOUT)?)
             }
+            CmsisDapDevice::Tcp { handle, .. } => {
+                let mut handle = handle.borrow_mut();
+                handle
+                    .set_read_timeout(Some(TCP_TIMEOUT))
+                    .expect("Non-zero");
+                Ok(handle.read(buf)?)
+            }
         }
     }
 
@@ -210,6 +226,13 @@ impl CmsisDapDevice {
             CmsisDapDevice::V2 { handle, out_ep, .. } => {
                 // Skip first byte as it's set to 0 for HID transfers
                 Ok(handle.write_bulk(*out_ep, &buf[1..], USB_TIMEOUT)?)
+            }
+            CmsisDapDevice::Tcp { handle, .. } => {
+                let mut handle = handle.borrow_mut();
+                handle
+                    .set_write_timeout(Some(TCP_TIMEOUT))
+                    .expect("Non-zero");
+                Ok(handle.write(&buf[1..])?)
             }
         }
     }
@@ -248,6 +271,23 @@ impl CmsisDapDevice {
                     }
                 }
             }
+
+            CmsisDapDevice::Tcp {
+                handle,
+                max_packet_size,
+            } => {
+                let mut handle = handle.borrow_mut();
+                handle
+                    .set_read_timeout(Some(Duration::from_millis(1)))
+                    .expect("Non-zero");
+                let mut discard = vec![0u8; *max_packet_size];
+                loop {
+                    match handle.read(&mut discard) {
+                        Ok(n) if n != 0 => continue,
+                        _ => break,
+                    }
+                }
+            }
         }
     }
 
@@ -265,6 +305,10 @@ impl CmsisDapDevice {
                 *report_size = packet_size;
             }
             CmsisDapDevice::V2 {
+                ref mut max_packet_size,
+                ..
+            }
+            | CmsisDapDevice::Tcp {
                 ref mut max_packet_size,
                 ..
             } => {
@@ -309,7 +353,7 @@ impl CmsisDapDevice {
     /// Check if SWO streaming is supported by this device.
     pub(super) fn swo_streaming_supported(&self) -> bool {
         match self {
-            CmsisDapDevice::V1 { .. } => false,
+            CmsisDapDevice::V1 { .. } | CmsisDapDevice::Tcp { .. } => false,
             CmsisDapDevice::V2 { swo_ep, .. } => swo_ep.is_some(),
         }
     }
@@ -321,24 +365,27 @@ impl CmsisDapDevice {
     /// On timeout, returns a zero-length buffer.
     pub(super) fn read_swo_stream(&self, timeout: Duration) -> Result<Vec<u8>, CmsisDapError> {
         match self {
-            CmsisDapDevice::V1 { .. } => Err(CmsisDapError::SwoModeNotAvailable),
-            CmsisDapDevice::V2 { handle, swo_ep, .. } => match swo_ep {
-                Some((ep, len)) => {
-                    let mut buf = vec![0u8; *len];
-                    match handle.read_bulk(*ep, &mut buf, timeout) {
-                        Ok(n) => {
-                            buf.truncate(n);
-                            Ok(buf)
-                        }
-                        Err(e) if e.kind() == ErrorKind::TimedOut => {
-                            buf.truncate(0);
-                            Ok(buf)
-                        }
-                        Err(e) => Err(CmsisDapError::SwoReadError(e)),
+            CmsisDapDevice::V1 { .. }
+            | CmsisDapDevice::V2 { swo_ep: None, .. }
+            | CmsisDapDevice::Tcp { .. } => Err(CmsisDapError::SwoModeNotAvailable),
+            CmsisDapDevice::V2 {
+                handle,
+                swo_ep: Some((ep, len)),
+                ..
+            } => {
+                let mut buf = vec![0u8; *len];
+                match handle.read_bulk(*ep, &mut buf, timeout) {
+                    Ok(n) => {
+                        buf.truncate(n);
+                        Ok(buf)
                     }
+                    Err(e) if e.kind() == ErrorKind::TimedOut => {
+                        buf.truncate(0);
+                        Ok(buf)
+                    }
+                    Err(e) => Err(CmsisDapError::SwoReadError(e)),
                 }
-                None => Err(CmsisDapError::SwoModeNotAvailable),
-            },
+            }
         }
     }
 }
@@ -435,6 +482,9 @@ fn send_command_inner<Req: Request>(
     let buffer_len: usize = match device {
         CmsisDapDevice::V1 { report_size, .. } => *report_size + 1,
         CmsisDapDevice::V2 {
+            max_packet_size, ..
+        }
+        | CmsisDapDevice::Tcp {
             max_packet_size, ..
         } => *max_packet_size + 1,
     };
