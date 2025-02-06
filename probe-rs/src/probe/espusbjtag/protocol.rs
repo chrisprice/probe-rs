@@ -441,7 +441,7 @@ impl ProtocolHandler {
             let bytes = self
                 .device_handle
                 .write_bulk(self.ep_out, commands, USB_TIMEOUT)
-                .map_err(DebugProbeError::Usb)?;
+                .map_err(DebugProbeError::Io)?;
 
             commands = &commands[bytes..];
         }
@@ -478,7 +478,7 @@ impl ProtocolHandler {
                     count,
                     self.pending_in_bits,
                 );
-                DebugProbeError::Usb(e)
+                DebugProbeError::Io(e)
             })?;
 
         if read_bytes > count {

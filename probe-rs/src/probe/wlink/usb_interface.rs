@@ -77,7 +77,7 @@ impl WchLinkUsbDevice {
         let written_bytes = self
             .device_handle
             .write_bulk(ENDPOINT_OUT, &rxbuf[..len], timeout)
-            .map_err(DebugProbeError::Usb)?;
+            .map_err(DebugProbeError::Io)?;
 
         if written_bytes != len {
             return Err(WchLinkError::NotEnoughBytesWritten {
@@ -91,7 +91,7 @@ impl WchLinkUsbDevice {
         let read_bytes = self
             .device_handle
             .read_bulk(ENDPOINT_IN, &mut rxbuf[..], timeout)
-            .map_err(DebugProbeError::Usb)?;
+            .map_err(DebugProbeError::Io)?;
 
         if read_bytes < 3 {
             return Err(WchLinkError::NotEnoughBytesRead {

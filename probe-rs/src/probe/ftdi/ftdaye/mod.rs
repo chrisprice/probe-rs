@@ -298,7 +298,7 @@ impl Device {
                 ""
             };
 
-            DebugProbeError::Usb(std::io::Error::other(format!(
+            DebugProbeError::Io(std::io::Error::other(format!(
                 "error while {while_}: {e}{help}",
             )))
         }
