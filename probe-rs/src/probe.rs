@@ -900,13 +900,21 @@ pub enum DebugProbeSelectorParseError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // We need this so that serde will first convert from the string `VID:PID:<Serial>` to a struct before deserializing.
 #[serde(try_from = "String")]
-pub struct DebugProbeSelector {
-    /// The the USB vendor id of the debug probe to be used.
-    pub vendor_id: u16,
-    /// The the USB product id of the debug probe to be used.
-    pub product_id: u16,
-    /// The the serial number of the debug probe to be used.
-    pub serial_number: Option<String>,
+pub enum DebugProbeSelector {
+    /// Select a probe over USB.
+    Usb {
+        /// The USB vendor id of the debug probe to be used.
+        vendor_id: u16,
+        /// The USB product id of the debug probe to be used.
+        product_id: u16,
+        /// The serial number of the debug probe to be used.
+        serial_number: Option<String>,
+    },
+    /// Select a probe over TCP/IP.
+    Tcp {
+        /// The address and port of the probe to be used.
+        address: SocketAddr
+    },
 }
 
 impl DebugProbeSelector {
