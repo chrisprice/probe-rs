@@ -261,8 +261,8 @@ pub enum ProbeCreationError {
     /// An HID API occurred.
     HidApi(#[from] hidapi::HidError),
 
-    /// A USB error occurred.
-    Usb(#[source] std::io::Error),
+    /// An underlying transport error occurred.
+    Io(#[source] std::io::Error),
 
     /// An error specific with the selected probe occurred.
     ProbeSpecific(#[source] BoxedProbeError),

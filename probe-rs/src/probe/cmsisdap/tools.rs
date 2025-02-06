@@ -247,7 +247,7 @@ pub fn open_tcp_device(
         }
         Err(e) => {
             tracing::debug!("Failed to connect to {}: {:?}", selector.address, e);
-            Err(ProbeCreationError::Usb(e))
+            Err(ProbeCreationError::Io(e))
         }
     }
 }
