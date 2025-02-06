@@ -248,7 +248,7 @@ pub fn open_tcp_device(address: &SocketAddr) -> Result<CmsisDapDevice, ProbeCrea
         }
         Err(e) => {
             tracing::debug!("Failed to connect to {}: {:?}", address, e);
-            Err(ProbeCreationError::Usb(e))
+            Err(ProbeCreationError::Io(e))
         }
     }
 }

@@ -87,12 +87,12 @@ impl Debug for ProtocolHandler {
 impl ProtocolHandler {
     pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
-            .map_err(ProbeCreationError::Usb)?
+            .map_err(ProbeCreationError::Io)?
             .filter(is_espjtag_device)
             .find(|device| selector.matches(device))
             .ok_or(ProbeCreationError::NotFound)?;
 
-        let device_handle = device.open().map_err(ProbeCreationError::Usb)?;
+        let device_handle = device.open().map_err(ProbeCreationError::Io)?;
 
         tracing::debug!("Aquired handle for probe");
 
@@ -152,7 +152,7 @@ impl ProtocolHandler {
 
         let iface = device_handle
             .claim_interface(interface_number)
-            .map_err(ProbeCreationError::Usb)?;
+            .map_err(ProbeCreationError::Io)?;
 
         let start = Instant::now();
         let buffer = loop {
@@ -163,7 +163,7 @@ impl ProtocolHandler {
                     0,
                     USB_TIMEOUT,
                 )
-                .map_err(ProbeCreationError::Usb)?;
+                .map_err(ProbeCreationError::Io)?;
             if !buffer.is_empty() {
                 break buffer;
             }

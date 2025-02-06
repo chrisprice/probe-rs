@@ -110,14 +110,14 @@ impl StLinkUsbDevice {
     /// Creates and initializes a new USB device.
     pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
-            .map_err(ProbeCreationError::Usb)?
+            .map_err(ProbeCreationError::Io)?
             .filter(is_stlink_device)
             .find(|device| selector_matches(selector, device))
             .ok_or(ProbeCreationError::NotFound)?;
 
         let info = USB_PID_EP_MAP[&device.product_id()].clone();
 
-        let device_handle = device.open().map_err(ProbeCreationError::Usb)?;
+        let device_handle = device.open().map_err(ProbeCreationError::Io)?;
         tracing::debug!("Aquired handle for probe");
 
         let mut endpoint_out = false;
@@ -151,7 +151,7 @@ impl StLinkUsbDevice {
 
         let interface = device_handle
             .claim_interface(0)
-            .map_err(ProbeCreationError::Usb)?;
+            .map_err(ProbeCreationError::Io)?;
 
         tracing::debug!("Claimed interface 0 of USB device.");
 

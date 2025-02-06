@@ -261,8 +261,8 @@ pub enum ProbeCreationError {
     /// An HID API occurred.
     HidApi(#[from] hidapi::HidError),
 
-    /// A USB error occurred.
-    Usb(#[source] std::io::Error),
+    /// An underlying transport error occurred.
+    Io(#[source] std::io::Error),
 
     /// An error specific with the selected probe occurred.
     ProbeSpecific(#[source] BoxedProbeError),
@@ -939,7 +939,7 @@ pub enum DebugProbeSelector {
     /// Select a probe over TCP/IP.
     Tcp {
         /// The address and port of the probe to be used.
-        address: SocketAddr
+        address: SocketAddr,
     },
 }
 
