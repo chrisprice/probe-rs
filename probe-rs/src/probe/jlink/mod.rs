@@ -77,13 +77,13 @@ impl ProbeFactory for JLinkFactory {
                 ""
             };
 
-            DebugProbeError::Usb(std::io::Error::other(format!(
+            DebugProbeError::Io(std::io::Error::other(format!(
                 "error while {while_}: {e}{help}",
             )))
         }
 
         let mut jlinks = nusb::list_devices()
-            .map_err(DebugProbeError::Usb)?
+            .map_err(DebugProbeError::Io)?
             .filter(is_jlink)
             .filter(|info| selector.matches(info))
             .collect::<Vec<_>>();

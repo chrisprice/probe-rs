@@ -164,8 +164,8 @@ where
 /// This error occurs whenever the debug probe logic encounters an error while operating the relevant debug probe.
 #[derive(thiserror::Error, Debug, docsplay::Display)]
 pub enum DebugProbeError {
-    /// USB Communication Error
-    Usb(#[source] std::io::Error),
+    /// Underlying transport communication error
+    Io(#[source] std::io::Error),
 
     /// An error which is specific to the debug probe in use occurred.
     ProbeSpecific(#[source] BoxedProbeError),
