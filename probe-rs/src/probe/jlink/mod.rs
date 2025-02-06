@@ -79,6 +79,12 @@ impl ProbeFactory for JLinkFactory {
             )))
         }
 
+        let super::DebugProbeSelector::Usb { product_id, .. } = selector else {
+            return Err(DebugProbeError::ProbeCouldNotBeCreated(
+                super::ProbeCreationError::NotFound,
+            ));
+        };
+
         let mut jlinks = nusb::list_devices()
             .map_err(DebugProbeError::Usb)?
             .filter(is_jlink)
@@ -253,7 +259,7 @@ impl ProbeFactory for JLinkFactory {
         // `read_max_mem_block`'s return value does not directly correspond to the
         // maximum transfer size when performing JTAG IO, and it's not clear how to get the actual value.
         // The number of *bits* is encoded as a u16, so the maximum value is 65535
-        this.jtag_chunk_size = match selector.product_id {
+        this.jtag_chunk_size = match *product_id {
             // 0x0101: J-Link EDU
             0x0101 => 65535,
             // 0x1051: J-Link OB-K22-SiFive: 504 bits
@@ -283,12 +289,15 @@ fn requires_connection_handle(selector: &DebugProbeSelector) -> bool {
     let devices = [
         (0x1366, 0x0101, Some("000000123456")), // Blue J-Link PRO clone
     ];
-
-    devices.contains(&(
-        selector.vendor_id,
-        selector.product_id,
-        selector.serial_number.as_deref(),
-    ))
+    let DebugProbeSelector::Usb {
+        vendor_id,
+        product_id,
+        serial_number,
+    } = selector
+    else {
+        return false;
+    };
+    devices.contains(&(*vendor_id, *product_id, serial_number.as_deref()))
 }
 
 impl Drop for JLink {

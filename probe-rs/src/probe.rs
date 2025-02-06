@@ -32,6 +32,7 @@ use probe_rs_target::ScanChainElement;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 /// Used to log warnings when the measured target voltage is
@@ -880,25 +881,50 @@ pub enum DebugProbeSelectorParseError {
 
 /// A struct to describe the way a probe should be selected.
 ///
-/// Construct this from a set of info or from a string. The
-/// string has to be in the format "VID:PID:SERIALNUMBER",
-/// where the serial number is optional, and VID and PID are
-/// parsed as hexadecimal numbers.
+/// Construct this from a set of info or from a string. The string has to be in one of
+/// the following formats -
 ///
-/// If SERIALNUMBER exists (i.e. the selector contains a second color) and is empty,
-/// probe-rs will select probes that have no serial number, or where the serial number is empty.
+/// * "VID:PID:SERIALNUMBER" - where the serial number is optional, and VID and PID are
+/// parsed as hexadecimal numbers. If SERIALNUMBER exists (i.e. the selector contains a
+/// second color) and is empty, probe-rs will select probes that have no serial number,
+/// or where the serial number is empty.
 ///
-/// ## Example:
+/// * "tcp://IP:PORT" - to connect to a probe over TCP/IP. The IP address can be
+/// either an IPv4 or an IPv6 address.
 ///
+/// ## Examples:
+///
+/// A selector for a probe with VID 0x1234, PID 0x5678 and no serial number:
+/// 
 /// ```
 /// use std::convert::TryInto;
 /// let selector: probe_rs::probe::DebugProbeSelector = "1942:1337:SERIAL".try_into().unwrap();
 ///
-/// assert_eq!(selector.vendor_id, 0x1942);
-/// assert_eq!(selector.product_id, 0x1337);
+/// match selector {
+///     probe_rs::probe::DebugProbeSelector::Usb { vendor_id, product_id, serial_number } => {
+///         assert_eq!(vendor_id, 0x1942);
+///         assert_eq!(product_id, 0x1337);
+///     },
+///     _ => panic!("Unexpected selector"),
+/// };
+/// ```
+/// 
+/// A selector for a probe at IP 192.168.1.10 and port 1234:
+///
+/// ```
+/// use std::convert::TryInto;
+/// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+/// let selector: probe_rs::probe::DebugProbeSelector = "tcp://192.168.1.10:1234".try_into().unwrap();
+///
+///  match selector {
+///     probe_rs::probe::DebugProbeSelector::Tcp { address: SocketAddr::V4(address) } => {
+///         assert_eq!(address, SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 1234));
+///     },
+///     _ => panic!("Unexpected selector"),
+/// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// We need this so that serde will first convert from the string `VID:PID:<Serial>` to a struct before deserializing.
+// We need this so that serde will first convert from the string to a struct before deserializing.
 #[serde(try_from = "String")]
 pub enum DebugProbeSelector {
     /// Select a probe over USB.
@@ -928,21 +954,29 @@ impl DebugProbeSelector {
         product_id: u16,
         serial_number: Option<&str>,
     ) -> bool {
-        vendor_id == self.vendor_id
-            && product_id == self.product_id
-            && self
-                .serial_number
-                .as_ref()
-                .map(|s| {
-                    if let Some(serial_number) = serial_number {
-                        serial_number == s
-                    } else {
-                        // Match probes without serial number when the
-                        // selector has a third, empty part ("VID:PID:")
-                        s.is_empty()
-                    }
-                })
-                .unwrap_or(true)
+        match self {
+            DebugProbeSelector::Usb {
+                vendor_id: self_vendor_id,
+                product_id: self_product_id,
+                serial_number: self_serial_number,
+            } => {
+                vendor_id == *self_vendor_id
+                    && product_id == *self_product_id
+                    && self_serial_number
+                        .as_ref()
+                        .map(|s| {
+                            if let Some(serial_number) = serial_number {
+                                serial_number == s
+                            } else {
+                                // Match probes without serial number when the
+                                // selector has a third, empty part ("VID:PID:")
+                                s.is_empty()
+                            }
+                        })
+                        .unwrap_or(true)
+            }
+            DebugProbeSelector::Tcp { .. } => false,
+        }
     }
 }
 
@@ -957,8 +991,7 @@ impl TryFrom<&str> for DebugProbeSelector {
         let vendor_id = split.next().unwrap(); // First split is always successful
         let product_id = split.next().ok_or(DebugProbeSelectorParseError::Format)?;
         let serial_number = split.next().map(|s| s.to_string());
-
-        Ok(DebugProbeSelector {
+        Ok(DebugProbeSelector::Usb {
             vendor_id: u16::from_str_radix(vendor_id, 16)?,
             product_id: u16::from_str_radix(product_id, 16)?,
             serial_number,
@@ -982,7 +1015,7 @@ impl std::str::FromStr for DebugProbeSelector {
 
 impl From<DebugProbeInfo> for DebugProbeSelector {
     fn from(selector: DebugProbeInfo) -> Self {
-        DebugProbeSelector {
+        DebugProbeSelector::Usb {
             vendor_id: selector.vendor_id,
             product_id: selector.product_id,
             serial_number: selector.serial_number,
@@ -992,7 +1025,7 @@ impl From<DebugProbeInfo> for DebugProbeSelector {
 
 impl From<&DebugProbeInfo> for DebugProbeSelector {
     fn from(selector: &DebugProbeInfo) -> Self {
-        DebugProbeSelector {
+        DebugProbeSelector::Usb {
             vendor_id: selector.vendor_id,
             product_id: selector.product_id,
             serial_number: selector.serial_number.clone(),
@@ -1008,11 +1041,20 @@ impl From<&DebugProbeSelector> for DebugProbeSelector {
 
 impl fmt::Display for DebugProbeSelector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:04x}:{:04x}", self.vendor_id, self.product_id)?;
-        if let Some(ref sn) = self.serial_number {
-            write!(f, ":{sn}")?;
+        match self {
+            DebugProbeSelector::Usb {
+                vendor_id,
+                product_id,
+                serial_number,
+            } => {
+                write!(f, "{:04x}:{:04x}", vendor_id, product_id)?;
+                if let Some(ref sn) = serial_number {
+                    write!(f, ":{sn}")?;
+                }
+                Ok(())
+            }
+            DebugProbeSelector::Tcp { address } => write!(f, "tcp://{}", address),
         }
-        Ok(())
     }
 }
 
@@ -1440,21 +1482,34 @@ mod test {
     fn test_parsing_many_colons() {
         let selector: DebugProbeSelector = "303a:1001:DC:DA:0C:D3:FE:D8".try_into().unwrap();
 
-        assert_eq!(selector.vendor_id, 0x303a);
-        assert_eq!(selector.product_id, 0x1001);
-        assert_eq!(
-            selector.serial_number,
-            Some("DC:DA:0C:D3:FE:D8".to_string())
-        );
+        let DebugProbeSelector::Usb {
+            vendor_id,
+            product_id,
+            serial_number,
+        } = selector
+        else {
+            panic!("Selector is not a USB selector");
+        };
+        assert_eq!(vendor_id, 0x303a);
+        assert_eq!(product_id, 0x1001);
+        assert_eq!(serial_number, Some("DC:DA:0C:D3:FE:D8".to_string()));
     }
 
     #[test]
     fn missing_serial_is_none() {
         let selector: DebugProbeSelector = "303a:1001".try_into().unwrap();
 
-        assert_eq!(selector.vendor_id, 0x303a);
-        assert_eq!(selector.product_id, 0x1001);
-        assert_eq!(selector.serial_number, None);
+        let DebugProbeSelector::Usb {
+            vendor_id,
+            product_id,
+            serial_number,
+        } = &selector
+        else {
+            panic!("Selector is not a USB selector");
+        };
+        assert_eq!(*vendor_id, 0x303a);
+        assert_eq!(*product_id, 0x1001);
+        assert_eq!(*serial_number, None);
 
         let matches = selector.match_probe_selector(0x303a, 0x1001, None);
         let matches_with_serial = selector.match_probe_selector(0x303a, 0x1001, Some("serial"));
@@ -1466,9 +1521,17 @@ mod test {
     fn empty_serial_is_some() {
         let selector: DebugProbeSelector = "303a:1001:".try_into().unwrap();
 
-        assert_eq!(selector.vendor_id, 0x303a);
-        assert_eq!(selector.product_id, 0x1001);
-        assert_eq!(selector.serial_number, Some(String::new()));
+        let DebugProbeSelector::Usb {
+            vendor_id,
+            product_id,
+            serial_number,
+        } = &selector
+        else {
+            panic!("Selector is not a USB selector");
+        };
+        assert_eq!(*vendor_id, 0x303a);
+        assert_eq!(*product_id, 0x1001);
+        assert_eq!(*serial_number, Some(String::new()));
 
         let matches = selector.match_probe_selector(0x303a, 0x1001, None);
         let matches_with_serial = selector.match_probe_selector(0x303a, 0x1001, Some("serial"));

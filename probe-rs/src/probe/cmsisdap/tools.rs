@@ -268,9 +268,17 @@ pub fn open_device_from_selector(
     }
 
     // If nusb failed or the device didn't support v2, try using hidapi to open in v1 mode.
-    let vid = selector.vendor_id;
-    let pid = selector.product_id;
-    let sn = selector.serial_number.as_deref();
+    let DebugProbeSelector::Usb {
+        vendor_id,
+        product_id,
+        serial_number,
+    } = selector
+    else {
+        return Err(ProbeCreationError::NotFound)?;
+    };
+    let vid = *vendor_id;
+    let pid = *product_id;
+    let sn = serial_number.as_deref();
 
     tracing::debug!(
         "Attempting to open {:04x}:{:04x} in CMSIS-DAP v1 mode",

@@ -20,10 +20,20 @@ impl TestLister {
 
 impl ProbeLister for TestLister {
     fn open(&self, selector: &DebugProbeSelector) -> Result<Probe, DebugProbeError> {
+        let DebugProbeSelector::Usb {
+            vendor_id,
+            product_id,
+            serial_number,
+        } = selector
+        else {
+            return Err(DebugProbeError::ProbeCouldNotBeCreated(
+                ProbeCreationError::CouldNotOpen,
+            ));
+        };
         let probe_index = self.probes.borrow().iter().position(|(info, _)| {
-            info.product_id == selector.product_id
-                && info.vendor_id == selector.vendor_id
-                && info.serial_number == selector.serial_number
+            info.product_id == *product_id
+                && info.vendor_id == *vendor_id
+                && info.serial_number == *serial_number
         });
 
         if let Some(index) = probe_index {

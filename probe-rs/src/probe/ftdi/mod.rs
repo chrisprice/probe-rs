@@ -269,9 +269,19 @@ impl std::fmt::Display for FtdiProbeFactory {
 impl ProbeFactory for FtdiProbeFactory {
     fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         // Only open FTDI-compatible probes
+        let DebugProbeSelector::Usb {
+            vendor_id,
+            product_id,
+            ..
+        } = selector
+        else {
+            return Err(DebugProbeError::ProbeCouldNotBeCreated(
+                ProbeCreationError::NotFound,
+            ));
+        };
         let Some(ftdi) = FTDI_COMPAT_DEVICES
             .iter()
-            .find(|ftdi| ftdi.id == (selector.vendor_id, selector.product_id))
+            .find(|ftdi| ftdi.id == (*vendor_id, *product_id))
             .copied()
         else {
             return Err(DebugProbeError::ProbeCouldNotBeCreated(

@@ -176,7 +176,7 @@ fn main_try(args: &[OsString], offset: UtcOffset) -> Result<()> {
         Some(selector)
     } else {
         match (config.probe.usb_vid.as_ref(), config.probe.usb_pid.as_ref()) {
-            (Some(vid), Some(pid)) => Some(DebugProbeSelector {
+            (Some(vid), Some(pid)) => Some(DebugProbeSelector::Usb {
                 vendor_id: u16::from_str_radix(vid, 16)?,
                 product_id: u16::from_str_radix(pid, 16)?,
                 serial_number: config.probe.serial.clone(),

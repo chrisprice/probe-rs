@@ -1439,10 +1439,18 @@ impl ProbeFactory for BlackMagicProbeFactory {
         &self,
         selector: &super::DebugProbeSelector,
     ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+        let super::DebugProbeSelector::Usb {
+            vendor_id,
+            product_id,
+            serial_number,
+        } = selector
+        else {
+            return Err(DebugProbeError::ProbeCouldNotBeCreated(
+                ProbeCreationError::NotFound,
+            ));
+        };
         // Ensure the VID and PID match Black Magic Probes
-        if selector.vendor_id != BLACK_MAGIC_PROBE_VID
-            || selector.product_id != BLACK_MAGIC_PROBE_PID
-        {
+        if *vendor_id != BLACK_MAGIC_PROBE_VID || *product_id != BLACK_MAGIC_PROBE_PID {
             return Err(DebugProbeError::ProbeCouldNotBeCreated(
                 ProbeCreationError::NotFound,
             ));
@@ -1450,7 +1458,7 @@ impl ProbeFactory for BlackMagicProbeFactory {
 
         // If the serial number is a valid "address:port" string, attempt to
         // connect to it via TCP.
-        if let Some(serial_number) = &selector.serial_number {
+        if let Some(serial_number) = serial_number {
             if let Ok(connection) = std::net::TcpStream::connect(serial_number) {
                 let reader = connection;
                 let writer = reader.try_clone().map_err(|e| {
@@ -1476,7 +1484,7 @@ impl ProbeFactory for BlackMagicProbeFactory {
                 continue;
             };
 
-            if selector.serial_number != info.serial_number {
+            if *serial_number != info.serial_number {
                 continue;
             }
 
