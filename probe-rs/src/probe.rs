@@ -32,7 +32,7 @@ use probe_rs_target::ScanChainElement;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 /// Used to log warnings when the measured target voltage is
@@ -885,17 +885,17 @@ pub enum DebugProbeSelectorParseError {
 /// the following formats -
 ///
 /// * "VID:PID:SERIALNUMBER" - where the serial number is optional, and VID and PID are
-/// parsed as hexadecimal numbers. If SERIALNUMBER exists (i.e. the selector contains a
-/// second color) and is empty, probe-rs will select probes that have no serial number,
-/// or where the serial number is empty.
+///   parsed as hexadecimal numbers. If SERIALNUMBER exists (i.e. the selector contains a
+///   second color) and is empty, probe-rs will select probes that have no serial number,
+///   or where the serial number is empty.
 ///
 /// * "tcp://IP:PORT" - to connect to a probe over TCP/IP. The IP address can be
-/// either an IPv4 or an IPv6 address.
+///   either an IPv4, an IPv6 address or a hostname.
 ///
 /// ## Examples:
 ///
 /// A selector for a probe with VID 0x1234, PID 0x5678 and no serial number:
-/// 
+///
 /// ```
 /// use std::convert::TryInto;
 /// let selector: probe_rs::probe::DebugProbeSelector = "1942:1337:SERIAL".try_into().unwrap();
@@ -908,7 +908,7 @@ pub enum DebugProbeSelectorParseError {
 ///     _ => panic!("Unexpected selector"),
 /// };
 /// ```
-/// 
+///
 /// A selector for a probe at IP 192.168.1.10 and port 1234:
 ///
 /// ```
@@ -983,6 +983,14 @@ impl DebugProbeSelector {
 impl TryFrom<&str> for DebugProbeSelector {
     type Error = DebugProbeSelectorParseError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if let Some(address) = value.strip_prefix("tcp://") {
+            let address = address
+                .to_socket_addrs()
+                .map_err(|_| DebugProbeSelectorParseError::Format)?
+                .next()
+                .ok_or(DebugProbeSelectorParseError::Format)?;
+            return Ok(DebugProbeSelector::Tcp { address });
+        }
         // Split into at most 3 parts: VID, PID, Serial.
         // We limit the number of splits to allow for colons in the
         // serial number (EspJtag uses MAC address)
@@ -1461,6 +1469,8 @@ pub enum AttachMethod {
 
 #[cfg(test)]
 mod test {
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
     use super::*;
 
     #[test]
@@ -1537,5 +1547,54 @@ mod test {
         let matches_with_serial = selector.match_probe_selector(0x303a, 0x1001, Some("serial"));
         assert!(matches);
         assert!(!matches_with_serial);
+    }
+
+    #[test]
+    fn test_parsing_tcp_v4() {
+        let selector: DebugProbeSelector = "tcp://192.168.1.10:1234".try_into().unwrap();
+
+        let DebugProbeSelector::Tcp {
+            address: SocketAddr::V4(address),
+        } = selector
+        else {
+            panic!("Selector is not a TCP selector");
+        };
+        assert_eq!(
+            address,
+            SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 1234)
+        );
+    }
+
+    #[test]
+    fn test_parsing_tcp_v6() {
+        let selector: DebugProbeSelector = "tcp://[::1]:1234".try_into().unwrap();
+
+        let DebugProbeSelector::Tcp {
+            address: SocketAddr::V6(address),
+        } = selector
+        else {
+            panic!("Selector is not a TCP IPv6 selector");
+        };
+        assert_eq!(
+            address,
+            std::net::SocketAddrV6::new(std::net::Ipv6Addr::LOCALHOST, 1234, 0, 0)
+        );
+    }
+
+    #[test]
+    fn test_parsing_tcp_hostname() {
+        let selector: DebugProbeSelector = "tcp://localhost:1234".try_into().unwrap();
+
+        match selector {
+            DebugProbeSelector::Tcp { address } => {
+                assert_eq!(address.port(), 1234);
+                assert!(
+                    address.ip().is_loopback(),
+                    "Expected a loopback IP, got {}",
+                    address.ip()
+                );
+            }
+            _ => panic!("Selector is not a TCP selector"),
+        }
     }
 }
