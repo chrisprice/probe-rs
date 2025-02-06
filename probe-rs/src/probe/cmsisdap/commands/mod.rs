@@ -63,8 +63,8 @@ pub enum SendError {
     /// Error in the USB HID access.
     HidApi(#[from] hidapi::HidError),
 
-    /// Error in the USB access.
-    UsbError(std::io::Error),
+    /// Error in the underlying transport.
+    IoError(std::io::Error),
 
     /// Not enough data in response from probe.
     NotEnoughData,
@@ -88,7 +88,7 @@ pub enum SendError {
     /// Unexpected answer to command.
     UnexpectedAnswer,
 
-    /// Timeout in USB communication.
+    /// Timeout in underlying transport communication.
     Timeout,
 }
 
@@ -96,7 +96,7 @@ impl From<std::io::Error> for SendError {
     fn from(error: std::io::Error) -> Self {
         match error.kind() {
             ErrorKind::TimedOut => SendError::Timeout,
-            _ => SendError::UsbError(error),
+            _ => SendError::IoError(error),
         }
     }
 }
