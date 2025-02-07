@@ -1,0 +1,1 @@
+Added TCP transport for connecting to debug probes (as well as USB). Connectivity only implemented for CMSIS-DAP.

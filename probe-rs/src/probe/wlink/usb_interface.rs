@@ -3,7 +3,7 @@ use std::time::Duration;
 use nusb::Interface;
 
 use crate::probe::{
-    usb_util::InterfaceExt, DebugProbeError, DebugProbeSelector, ProbeCreationError,
+    usb_util::InterfaceExt, DebugProbeError, ProbeCreationError, UsbDebugProbeSelector,
 };
 
 use super::{commands::WchLinkCommand, get_wlink_info, WchLinkError};
@@ -19,9 +19,9 @@ pub struct WchLinkUsbDevice {
 }
 
 impl WchLinkUsbDevice {
-    pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
+    pub fn new_from_selector(selector: &UsbDebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
-            .map_err(ProbeCreationError::Usb)?
+            .map_err(ProbeCreationError::Io)?
             .filter(|device| selector.matches(device))
             .find(|device| get_wlink_info(device).is_some())
             .ok_or(ProbeCreationError::NotFound)?;
@@ -29,7 +29,7 @@ impl WchLinkUsbDevice {
         let mut endpoint_out = false;
         let mut endpoint_in = false;
 
-        let device_handle = device.open().map_err(ProbeCreationError::Usb)?;
+        let device_handle = device.open().map_err(ProbeCreationError::Io)?;
 
         let mut configs = device_handle.configurations();
         if let Some(config) = configs.next() {
@@ -53,7 +53,7 @@ impl WchLinkUsbDevice {
         tracing::trace!("Aquired handle for probe");
         let device_handle = device_handle
             .claim_interface(0)
-            .map_err(ProbeCreationError::Usb)?;
+            .map_err(ProbeCreationError::Io)?;
         tracing::trace!("Claimed interface 0 of USB device.");
 
         let usb_wlink = Self { device_handle };
@@ -77,7 +77,7 @@ impl WchLinkUsbDevice {
         let written_bytes = self
             .device_handle
             .write_bulk(ENDPOINT_OUT, &rxbuf[..len], timeout)
-            .map_err(DebugProbeError::Usb)?;
+            .map_err(DebugProbeError::Io)?;
 
         if written_bytes != len {
             return Err(WchLinkError::NotEnoughBytesWritten {
@@ -91,7 +91,7 @@ impl WchLinkUsbDevice {
         let read_bytes = self
             .device_handle
             .read_bulk(ENDPOINT_IN, &mut rxbuf[..], timeout)
-            .map_err(DebugProbeError::Usb)?;
+            .map_err(DebugProbeError::Io)?;
 
         if read_bytes < 3 {
             return Err(WchLinkError::NotEnoughBytesRead {

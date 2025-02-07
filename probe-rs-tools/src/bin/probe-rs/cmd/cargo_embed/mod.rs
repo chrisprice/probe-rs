@@ -9,6 +9,7 @@ use parking_lot::FairMutex;
 use probe_rs::flashing::{BootInfo, FormatKind};
 use probe_rs::gdb_server::GdbInstanceConfiguration;
 use probe_rs::probe::list::Lister;
+use probe_rs::probe::UsbDebugProbeSelector;
 use probe_rs::rtt::ScanRegion;
 use probe_rs::{probe::DebugProbeSelector, Session};
 use std::ffi::OsString;
@@ -57,6 +58,7 @@ struct CliOptions {
     ///  Use this flag to select a specific probe in the list.
     ///
     ///  Use '--probe VID:PID' or '--probe VID:PID:Serial' if you have more than one probe with the same VID:PID.
+    ///  Alternatively, you can specify tcp://ip:port to connect to a probe over a network.
     #[arg(long)]
     probe: Option<DebugProbeSelector>,
     #[arg(long)]
@@ -176,11 +178,11 @@ fn main_try(args: &[OsString], offset: UtcOffset) -> Result<()> {
         Some(selector)
     } else {
         match (config.probe.usb_vid.as_ref(), config.probe.usb_pid.as_ref()) {
-            (Some(vid), Some(pid)) => Some(DebugProbeSelector {
+            (Some(vid), Some(pid)) => Some(DebugProbeSelector::Usb(UsbDebugProbeSelector {
                 vendor_id: u16::from_str_radix(vid, 16)?,
                 product_id: u16::from_str_radix(pid, 16)?,
                 serial_number: config.probe.serial.clone(),
-            }),
+            })),
             (vid, pid) => {
                 if vid.is_some() {
                     tracing::warn!("USB VID ignored, because PID is not specified.");

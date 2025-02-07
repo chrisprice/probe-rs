@@ -986,8 +986,8 @@ mod test {
         architecture::arm::FullyQualifiedApAddress,
         integration::{FakeProbe, Operation},
         probe::{
-            list::Lister, DebugProbe, DebugProbeError, DebugProbeInfo, DebugProbeSelector,
-            ProbeFactory,
+            list::Lister, DebugProbe, DebugProbeError, DebugProbeInfo, ProbeFactory,
+            UsbDebugProbeSelector,
         },
     };
     use serde_json::json;
@@ -1011,9 +1011,9 @@ mod test {
     }
 
     impl ProbeFactory for MockProbeFactory {
-        fn open(
+        fn open_usb(
             &self,
-            _selector: &DebugProbeSelector,
+            _selector: &UsbDebugProbeSelector,
         ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
             todo!()
         }

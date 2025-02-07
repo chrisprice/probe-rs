@@ -10,7 +10,7 @@ use std::{
 
 use crate::probe::{
     espusbjtag::EspUsbJtagFactory, usb_util::InterfaceExt, DebugProbeError, DebugProbeInfo,
-    DebugProbeSelector, ProbeCreationError, ProbeError,
+    ProbeCreationError, ProbeError, UsbDebugProbeSelector,
 };
 
 const JTAG_PROTOCOL_CAPABILITIES_VERSION: u8 = 1;
@@ -85,14 +85,14 @@ impl Debug for ProtocolHandler {
 }
 
 impl ProtocolHandler {
-    pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
+    pub fn new_from_selector(selector: &UsbDebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
-            .map_err(ProbeCreationError::Usb)?
+            .map_err(ProbeCreationError::Io)?
             .filter(is_espjtag_device)
             .find(|device| selector.matches(device))
             .ok_or(ProbeCreationError::NotFound)?;
 
-        let device_handle = device.open().map_err(ProbeCreationError::Usb)?;
+        let device_handle = device.open().map_err(ProbeCreationError::Io)?;
 
         tracing::debug!("Aquired handle for probe");
 
@@ -152,7 +152,7 @@ impl ProtocolHandler {
 
         let iface = device_handle
             .claim_interface(interface_number)
-            .map_err(ProbeCreationError::Usb)?;
+            .map_err(ProbeCreationError::Io)?;
 
         let start = Instant::now();
         let buffer = loop {
@@ -163,7 +163,7 @@ impl ProtocolHandler {
                     0,
                     USB_TIMEOUT,
                 )
-                .map_err(ProbeCreationError::Usb)?;
+                .map_err(ProbeCreationError::Io)?;
             if !buffer.is_empty() {
                 break buffer;
             }
@@ -441,7 +441,7 @@ impl ProtocolHandler {
             let bytes = self
                 .device_handle
                 .write_bulk(self.ep_out, commands, USB_TIMEOUT)
-                .map_err(DebugProbeError::Usb)?;
+                .map_err(DebugProbeError::Io)?;
 
             commands = &commands[bytes..];
         }
@@ -478,7 +478,7 @@ impl ProtocolHandler {
                     count,
                     self.pending_in_bits,
                 );
-                DebugProbeError::Usb(e)
+                DebugProbeError::Io(e)
             })?;
 
         if read_bytes > count {

@@ -16,8 +16,8 @@ use crate::{
         communication_interface::RiscvInterfaceBuilder, dtm::jtag_dtm::JtagDtmBuilder,
     },
     probe::{
-        DebugProbe, DebugProbeError, DebugProbeInfo, DebugProbeSelector, ProbeError, ProbeFactory,
-        WireProtocol,
+        DebugProbe, DebugProbeError, DebugProbeInfo, ProbeError, ProbeFactory,
+        UsbDebugProbeSelector, WireProtocol,
     },
 };
 
@@ -160,7 +160,10 @@ impl std::fmt::Display for WchLinkFactory {
 }
 
 impl ProbeFactory for WchLinkFactory {
-    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+    fn open_usb(
+        &self,
+        selector: &UsbDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         let device = WchLinkUsbDevice::new_from_selector(selector)?;
         let mut wlink = WchLink {
             device,

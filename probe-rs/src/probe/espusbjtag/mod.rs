@@ -13,8 +13,8 @@ use crate::{
         },
     },
     probe::{
-        common::RawJtagIo, DebugProbe, DebugProbeError, DebugProbeInfo, DebugProbeSelector,
-        ProbeFactory, WireProtocol,
+        common::RawJtagIo, DebugProbe, DebugProbeError, DebugProbeInfo, ProbeFactory,
+        UsbDebugProbeSelector, WireProtocol,
     },
 };
 use bitvec::prelude::*;
@@ -36,7 +36,10 @@ impl std::fmt::Display for EspUsbJtagFactory {
 }
 
 impl ProbeFactory for EspUsbJtagFactory {
-    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+    fn open_usb(
+        &self,
+        selector: &UsbDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         let protocol = ProtocolHandler::new_from_selector(selector)?;
 
         Ok(Box::new(EspUsbJtag {
