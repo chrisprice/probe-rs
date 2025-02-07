@@ -7,9 +7,10 @@ pub mod transfer;
 
 use crate::probe::cmsisdap::commands::general::info::PacketSizeCommand;
 use crate::probe::usb_util::InterfaceExt;
-use crate::probe::{ProbeError, WireProtocol};
+use crate::probe::{DebugProbeError, ProbeError, WireProtocol};
 use std::cell::RefCell;
 use std::io::{ErrorKind, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::str::Utf8Error;
 use std::time::Duration;
 
@@ -190,7 +191,8 @@ pub enum CmsisDapDevice {
     /// Unofficial CMSIS-DAP v2 over TCP.
     /// Stores a TCP stream handle and maximum DAP packet size.
     Tcp {
-        handle: RefCell<std::net::TcpStream>,
+        address: SocketAddr,
+        handle: RefCell<TcpStream>,
         max_packet_size: usize,
     },
 }
@@ -275,6 +277,7 @@ impl CmsisDapDevice {
             CmsisDapDevice::Tcp {
                 handle,
                 max_packet_size,
+                ..
             } => {
                 let mut handle = handle.borrow_mut();
                 handle
@@ -387,6 +390,24 @@ impl CmsisDapDevice {
                 }
             }
         }
+    }
+
+    pub(super) fn connect_if_needed(&mut self) -> Result<(), DebugProbeError> {
+        match self {
+            CmsisDapDevice::V1 { .. } | CmsisDapDevice::V2 { .. } => {}
+            CmsisDapDevice::Tcp {
+                handle, address, ..
+            } => {
+                let mut buf = [0u8; 1];
+                if let Ok(0) = handle.borrow().peek(&mut buf) {
+                    // Attempt to reconnect the device
+                    let stream = TcpStream::connect_timeout(address, TCP_TIMEOUT)
+                        .map_err(DebugProbeError::Io)?;
+                    handle.replace(stream);
+                };
+            }
+        }
+        Ok(())
     }
 }
 

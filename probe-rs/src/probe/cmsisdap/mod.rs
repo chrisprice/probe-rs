@@ -761,6 +761,8 @@ impl CmsisDap {
             return Ok(());
         }
 
+        self.device.connect_if_needed()?;
+
         let protocol: ConnectRequest = if let Some(protocol) = self.protocol {
             match protocol {
                 WireProtocol::Swd => ConnectRequest::Swd,
