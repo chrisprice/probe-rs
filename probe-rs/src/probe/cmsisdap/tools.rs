@@ -1,6 +1,9 @@
+use std::{cell::RefCell, net::TcpStream, time::Duration};
+
 use super::CmsisDapDevice;
 use crate::probe::{
-    cmsisdap::CmsisDapFactory, DebugProbeInfo, ProbeCreationError, UsbDebugProbeSelector,
+    cmsisdap::CmsisDapFactory, DebugProbeInfo, ProbeCreationError, TcpDebugProbeSelector,
+    UsbDebugProbeSelector,
 };
 use hidapi::HidApi;
 use nusb::{
@@ -9,6 +12,8 @@ use nusb::{
 };
 
 const USB_CLASS_HID: u8 = 0x03;
+const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const DEFAULT_PACKET_SIZE: usize = 64;
 
 /// Finds all CMSIS-DAP devices, either v1 (HID) or v2 (WinUSB Bulk).
 ///
@@ -227,9 +232,29 @@ pub fn open_v2_device(device_info: &DeviceInfo) -> Option<CmsisDapDevice> {
     None
 }
 
-/// Attempt to open the given DebugProbeInfo in CMSIS-DAP v2 mode if possible,
+pub fn open_tcp_device(
+    selector: &TcpDebugProbeSelector,
+) -> Result<CmsisDapDevice, ProbeCreationError> {
+    match TcpStream::connect_timeout(&selector.address, TCP_CONNECT_TIMEOUT) {
+        Ok(stream) => {
+            Ok(CmsisDapDevice::Tcp {
+                handle: RefCell::new(stream),
+                // Start with a default 64-byte packet size for now, which is the most
+                // common size for CMSIS-DAPv1 HID devices. We'll request the actual
+                // size to use from the probe later.
+                max_packet_size: DEFAULT_PACKET_SIZE,
+            })
+        }
+        Err(e) => {
+            tracing::debug!("Failed to connect to {}: {:?}", selector.address, e);
+            Err(ProbeCreationError::Usb(e))
+        }
+    }
+}
+
+/// Attempt to open the given DebugProbeSelector in CMSIS-DAP v2 mode if possible,
 /// otherwise in v1 mode.
-pub fn open_device_from_selector(
+pub fn open_usb_device(
     selector: &UsbDebugProbeSelector,
 ) -> Result<CmsisDapDevice, ProbeCreationError> {
     tracing::trace!("Attempting to open device matching {}", selector);
@@ -314,7 +339,7 @@ pub fn open_device_from_selector(
                 // Start with a default 64-byte report size, which is the most
                 // common size for CMSIS-DAPv1 HID devices. We'll request the
                 // actual size to use from the probe later.
-                report_size: 64,
+                report_size: DEFAULT_PACKET_SIZE,
             })
         }
         _ => {
