@@ -68,7 +68,7 @@ pub struct ReadWriteOptions {
 }
 
 /// Common options and logic when interfacing with a [Probe].
-#[derive(clap::Parser, Debug)]
+#[derive(clap::Parser, Clone, Debug)]
 pub struct ProbeOptions {
     #[arg(long, env = "PROBE_RS_CHIP", help_heading = "PROBE CONFIGURATION")]
     pub chip: Option<String>,
@@ -143,7 +143,7 @@ impl ProbeOptions {
 }
 
 /// Common options and logic when interfacing with a [Probe] which already did all pre operation preparation.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LoadedProbeOptions(ProbeOptions);
 
 impl LoadedProbeOptions {

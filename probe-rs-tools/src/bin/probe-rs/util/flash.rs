@@ -10,6 +10,7 @@ use std::{path::Path, time::Instant};
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use probe_rs::flashing::FlashLayout;
+use probe_rs::probe::list::Lister;
 use probe_rs::InstructionSet;
 use probe_rs::{
     flashing::{DownloadOptions, FileDownloadError, FlashLoader, FlashProgress, ProgressEvent},
@@ -33,6 +34,18 @@ pub fn run_flash_download(
     options.disable_double_buffering = download_options.disable_double_buffering;
     options.verify = download_options.verify;
     options.preverify = download_options.preverify;
+    options.reattach_session = {
+        let probe_options = probe_options.clone();
+        Some(Box::new(move |session| {
+            let target = probe_options.get_target_selector().map_err(|_| ())?;
+            let probe = probe_options.attach_probe(&Lister::default()).map_err(|_| ())?;
+            let _ = core::mem::replace(
+                session,
+                probe_options.attach_session(probe, target).map_err(|_| ())?,
+            );
+            Ok(())
+        }))
+    };
 
     if !download_options.disable_progressbars {
         // Create progress bars.

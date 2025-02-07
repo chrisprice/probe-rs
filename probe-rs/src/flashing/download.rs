@@ -204,6 +204,8 @@ pub struct DownloadOptions {
     pub verify: bool,
     /// Disable double buffering when loading flash.
     pub disable_double_buffering: bool,
+    /// Optional function to reattach the session after a flash operation.
+    pub reattach_session: Option<Box<dyn Fn(&mut Session) -> Result<(), ()>>>,
 }
 
 impl DownloadOptions {

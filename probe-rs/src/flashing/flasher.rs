@@ -259,7 +259,7 @@ impl Flasher {
     /// that are not to be written during flashing will be read from the flash first
     /// and written again once the sector is erased.
     #[allow(clippy::too_many_arguments)] // The plan is to remove at least `verify` in the future.
-    pub(super) fn program(
+    pub(super) fn program<'a>(
         &mut self,
         session: &mut Session,
         progress: &FlashProgress,
@@ -269,6 +269,7 @@ impl Flasher {
         enable_double_buffering: bool,
         skip_erasing: bool,
         verify: bool,
+        reattach_session: Option<&'a Box<dyn Fn(&mut Session) -> Result<(), ()> + 'a>>,
     ) -> Result<(), FlashError> {
         tracing::debug!("Starting program procedure.");
         // Convert the list of flash operations into flash sectors and pages.
@@ -298,6 +299,10 @@ impl Flasher {
         } else {
             self.program_simple(session, progress, &flash_encoder)?;
         };
+
+        if self.flash_algorithm.reconnect_after_program && reattach_session.is_some() {
+            reattach_session.unwrap()(session).unwrap();
+        }
 
         if verify
             && !self.verify(
