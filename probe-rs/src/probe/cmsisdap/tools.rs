@@ -1,6 +1,6 @@
 use super::CmsisDapDevice;
 use crate::probe::{
-    cmsisdap::CmsisDapFactory, DebugProbeInfo, DebugProbeSelector, ProbeCreationError,
+    cmsisdap::CmsisDapFactory, DebugProbeInfo, ProbeCreationError, UsbDebugProbeSelector,
 };
 use hidapi::HidApi;
 use nusb::{
@@ -230,7 +230,7 @@ pub fn open_v2_device(device_info: &DeviceInfo) -> Option<CmsisDapDevice> {
 /// Attempt to open the given DebugProbeInfo in CMSIS-DAP v2 mode if possible,
 /// otherwise in v1 mode.
 pub fn open_device_from_selector(
-    selector: &DebugProbeSelector,
+    selector: &UsbDebugProbeSelector,
 ) -> Result<CmsisDapDevice, ProbeCreationError> {
     tracing::trace!("Attempting to open device matching {}", selector);
 

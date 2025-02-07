@@ -3,7 +3,7 @@ use std::time::Duration;
 use nusb::Interface;
 
 use crate::probe::{
-    usb_util::InterfaceExt, DebugProbeError, DebugProbeSelector, ProbeCreationError,
+    usb_util::InterfaceExt, DebugProbeError, ProbeCreationError, UsbDebugProbeSelector,
 };
 
 use super::{commands::WchLinkCommand, get_wlink_info, WchLinkError};
@@ -19,7 +19,7 @@ pub struct WchLinkUsbDevice {
 }
 
 impl WchLinkUsbDevice {
-    pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
+    pub fn new_from_selector(selector: &UsbDebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
             .map_err(ProbeCreationError::Usb)?
             .filter(|device| selector.matches(device))

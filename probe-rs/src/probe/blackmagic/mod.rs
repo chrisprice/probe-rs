@@ -1435,9 +1435,9 @@ fn black_magic_debug_port_info(
 }
 
 impl ProbeFactory for BlackMagicProbeFactory {
-    fn open(
+    fn open_usb(
         &self,
-        selector: &super::DebugProbeSelector,
+        selector: &super::UsbDebugProbeSelector,
     ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         // Ensure the VID and PID match Black Magic Probes
         if selector.vendor_id != BLACK_MAGIC_PROBE_VID

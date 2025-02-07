@@ -18,8 +18,8 @@ use crate::{
         SwoConfig, SwoMode,
     },
     probe::{
-        DebugProbe, DebugProbeError, DebugProbeInfo, DebugProbeSelector, Probe, ProbeError,
-        ProbeFactory, WireProtocol,
+        DebugProbe, DebugProbeError, DebugProbeInfo, Probe, ProbeError, ProbeFactory,
+        UsbDebugProbeSelector, WireProtocol,
     },
     Error as ProbeRsError, MemoryInterface,
 };
@@ -58,7 +58,10 @@ impl std::fmt::Display for StLinkFactory {
 }
 
 impl ProbeFactory for StLinkFactory {
-    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+    fn open_usb(
+        &self,
+        selector: &UsbDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         let device = StLinkUsbDevice::new_from_selector(selector)?;
         let mut stlink = StLink {
             name: format!("ST-Link {}", &device.info.version_name),

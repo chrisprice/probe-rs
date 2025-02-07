@@ -10,7 +10,7 @@ use std::{
 
 use crate::probe::{
     espusbjtag::EspUsbJtagFactory, usb_util::InterfaceExt, DebugProbeError, DebugProbeInfo,
-    DebugProbeSelector, ProbeCreationError, ProbeError,
+    ProbeCreationError, ProbeError, UsbDebugProbeSelector,
 };
 
 const JTAG_PROTOCOL_CAPABILITIES_VERSION: u8 = 1;
@@ -85,7 +85,7 @@ impl Debug for ProtocolHandler {
 }
 
 impl ProtocolHandler {
-    pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
+    pub fn new_from_selector(selector: &UsbDebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
             .map_err(ProbeCreationError::Usb)?
             .filter(is_espjtag_device)

@@ -32,6 +32,7 @@ use probe_rs_target::ScanChainElement;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 /// Used to log warnings when the measured target voltage is
@@ -596,7 +597,30 @@ pub trait ProbeFactory: std::any::Any + std::fmt::Display + std::fmt::Debug + Sy
     /// Creates a new boxed [`DebugProbe`] from a given [`DebugProbeSelector`].
     /// This will be called for all available debug drivers when discovering probes.
     /// When opening, it will open the first probe which succeeds during this call.
-    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError>;
+    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+        match selector {
+            DebugProbeSelector::Usb(selector) => self.open_usb(selector),
+            DebugProbeSelector::Tcp(selector) => self.open_tcp(selector),
+        }
+    }
+
+    /// Creates a new boxed [`DebugProbe`] from a given [`UsbDebugProbeSelector`].
+    /// This will be called for all available debug drivers when discovering probes.
+    /// When opening, it will open the first probe which succeeds during this call.
+    fn open_usb(
+        &self,
+        selector: &UsbDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError>;
+
+    /// Creates a new boxed [`DebugProbe`] from a given [`TcpDebugProbeSelector`].
+    /// This will be called for all available debug drivers when discovering probes.
+    /// When opening, it will open the first probe which succeeds during this call.
+    fn open_tcp(
+        &self,
+        _selector: &TcpDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+        Err(DebugProbeError::TargetNotFound)
+    }
 
     /// Returns a list of all available debug probes of the current type.
     fn list_probes(&self) -> Vec<DebugProbeInfo>;
@@ -874,33 +898,70 @@ pub enum DebugProbeSelectorParseError {
     /// Could not parse VID or PID: {0}
     ParseInt(#[from] std::num::ParseIntError),
 
-    /// The format of the selector is invalid. Please use a string in the form `VID:PID:<Serial>`, where Serial is optional.
+    /// The format of the selector is invalid. Please use a string in the form `VID:PID:<Serial>`,
+    /// where Serial is optional, or `tcp://<IP>:<PORT>`.
     Format,
 }
 
 /// A struct to describe the way a probe should be selected.
 ///
-/// Construct this from a set of info or from a string. The
-/// string has to be in the format "VID:PID:SERIALNUMBER",
-/// where the serial number is optional, and VID and PID are
-/// parsed as hexadecimal numbers.
+/// Construct this from a set of info or from a string. The string has to be in one of
+/// the following formats -
 ///
-/// If SERIALNUMBER exists (i.e. the selector contains a second color) and is empty,
-/// probe-rs will select probes that have no serial number, or where the serial number is empty.
+/// * "VID:PID:SERIALNUMBER" - where the serial number is optional, and VID and PID are
+///   parsed as hexadecimal numbers. If SERIALNUMBER exists (i.e. the selector contains a
+///   second color) and is empty, probe-rs will select probes that have no serial number,
+///   or where the serial number is empty.
 ///
-/// ## Example:
+/// * "tcp://IP:PORT" - to connect to a probe over TCP/IP. The IP address can be
+///   either an IPv4, an IPv6 address or a hostname.
+///
+/// ## Examples:
+///
+/// A selector for a probe with VID 0x1234, PID 0x5678 and no serial number:
 ///
 /// ```
 /// use std::convert::TryInto;
-/// let selector: probe_rs::probe::DebugProbeSelector = "1942:1337:SERIAL".try_into().unwrap();
+/// use probe_rs::probe::{DebugProbeSelector, UsbDebugProbeSelector};
+/// let selector: DebugProbeSelector = "1942:1337:SERIAL".try_into().unwrap();
 ///
-/// assert_eq!(selector.vendor_id, 0x1942);
-/// assert_eq!(selector.product_id, 0x1337);
+/// match selector {
+///     DebugProbeSelector::Usb(UsbDebugProbeSelector { vendor_id, product_id, serial_number }) => {
+///         assert_eq!(vendor_id, 0x1942);
+///         assert_eq!(product_id, 0x1337);
+///     },
+///     _ => panic!("Unexpected selector"),
+/// };
+/// ```
+///
+/// A selector for a probe at IP 192.168.1.10 and port 1234:
+///
+/// ```
+/// use std::convert::TryInto;
+/// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+/// use probe_rs::probe::{DebugProbeSelector, TcpDebugProbeSelector};
+/// let selector: DebugProbeSelector = "tcp://192.168.1.10:1234".try_into().unwrap();
+///
+///  match selector {
+///         DebugProbeSelector::Tcp(TcpDebugProbeSelector { address: SocketAddr::V4(address) }) => {
+///         assert_eq!(address, SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 1234));
+///     },
+///     _ => panic!("Unexpected selector"),
+/// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// We need this so that serde will first convert from the string `VID:PID:<Serial>` to a struct before deserializing.
+// We need this so that serde will first convert from the string to a struct before deserializing.
 #[serde(try_from = "String")]
-pub struct DebugProbeSelector {
+pub enum DebugProbeSelector {
+    /// Select a USB device by VID, PID and optionally serial number.
+    Usb(UsbDebugProbeSelector),
+    /// Select a probe over TCP/IP.
+    Tcp(TcpDebugProbeSelector),
+}
+
+/// Select a USB device by VID, PID and optionally serial number.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsbDebugProbeSelector {
     /// The the USB vendor id of the debug probe to be used.
     pub vendor_id: u16,
     /// The the USB product id of the debug probe to be used.
@@ -909,7 +970,7 @@ pub struct DebugProbeSelector {
     pub serial_number: Option<String>,
 }
 
-impl DebugProbeSelector {
+impl UsbDebugProbeSelector {
     pub(crate) fn matches(&self, info: &DeviceInfo) -> bool {
         self.match_probe_selector(info.vendor_id(), info.product_id(), info.serial_number())
     }
@@ -938,9 +999,40 @@ impl DebugProbeSelector {
     }
 }
 
+impl fmt::Display for UsbDebugProbeSelector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:04x}:{:04x}", self.vendor_id, self.product_id)?;
+        if let Some(ref sn) = self.serial_number {
+            write!(f, ":{sn}")?;
+        }
+        Ok(())
+    }
+}
+
+/// Select a probe over TCP/IP.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TcpDebugProbeSelector {
+    /// The address of the probe to connect to.
+    pub address: SocketAddr,
+}
+
+impl fmt::Display for TcpDebugProbeSelector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "tcp://{}", self.address)
+    }
+}
+
 impl TryFrom<&str> for DebugProbeSelector {
     type Error = DebugProbeSelectorParseError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if let Some(address) = value.strip_prefix("tcp://") {
+            let address = address
+                .to_socket_addrs()
+                .map_err(|_| DebugProbeSelectorParseError::Format)?
+                .next()
+                .ok_or(DebugProbeSelectorParseError::Format)?;
+            return Ok(DebugProbeSelector::Tcp(TcpDebugProbeSelector { address }));
+        }
         // Split into at most 3 parts: VID, PID, Serial.
         // We limit the number of splits to allow for colons in the
         // serial number (EspJtag uses MAC address)
@@ -949,12 +1041,11 @@ impl TryFrom<&str> for DebugProbeSelector {
         let vendor_id = split.next().unwrap(); // First split is always successful
         let product_id = split.next().ok_or(DebugProbeSelectorParseError::Format)?;
         let serial_number = split.next().map(|s| s.to_string());
-
-        Ok(DebugProbeSelector {
+        Ok(DebugProbeSelector::Usb(UsbDebugProbeSelector {
             vendor_id: u16::from_str_radix(vendor_id, 16)?,
             product_id: u16::from_str_radix(product_id, 16)?,
             serial_number,
-        })
+        }))
     }
 }
 
@@ -974,21 +1065,21 @@ impl std::str::FromStr for DebugProbeSelector {
 
 impl From<DebugProbeInfo> for DebugProbeSelector {
     fn from(selector: DebugProbeInfo) -> Self {
-        DebugProbeSelector {
+        DebugProbeSelector::Usb(UsbDebugProbeSelector {
             vendor_id: selector.vendor_id,
             product_id: selector.product_id,
             serial_number: selector.serial_number,
-        }
+        })
     }
 }
 
 impl From<&DebugProbeInfo> for DebugProbeSelector {
     fn from(selector: &DebugProbeInfo) -> Self {
-        DebugProbeSelector {
+        DebugProbeSelector::Usb(UsbDebugProbeSelector {
             vendor_id: selector.vendor_id,
             product_id: selector.product_id,
             serial_number: selector.serial_number.clone(),
-        }
+        })
     }
 }
 
@@ -1000,11 +1091,10 @@ impl From<&DebugProbeSelector> for DebugProbeSelector {
 
 impl fmt::Display for DebugProbeSelector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:04x}:{:04x}", self.vendor_id, self.product_id)?;
-        if let Some(ref sn) = self.serial_number {
-            write!(f, ":{sn}")?;
+        match self {
+            DebugProbeSelector::Usb(selector) => selector.fmt(f),
+            DebugProbeSelector::Tcp(selector) => selector.fmt(f),
         }
-        Ok(())
     }
 }
 
@@ -1411,6 +1501,8 @@ pub enum AttachMethod {
 
 #[cfg(test)]
 mod test {
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+
     use super::*;
 
     #[test]
@@ -1432,6 +1524,10 @@ mod test {
     fn test_parsing_many_colons() {
         let selector: DebugProbeSelector = "303a:1001:DC:DA:0C:D3:FE:D8".try_into().unwrap();
 
+        let DebugProbeSelector::Usb(selector) = selector else {
+            panic!("Selector is not a USB selector");
+        };
+
         assert_eq!(selector.vendor_id, 0x303a);
         assert_eq!(selector.product_id, 0x1001);
         assert_eq!(
@@ -1443,6 +1539,10 @@ mod test {
     #[test]
     fn missing_serial_is_none() {
         let selector: DebugProbeSelector = "303a:1001".try_into().unwrap();
+
+        let DebugProbeSelector::Usb(selector) = selector else {
+            panic!("Selector is not a USB selector");
+        };
 
         assert_eq!(selector.vendor_id, 0x303a);
         assert_eq!(selector.product_id, 0x1001);
@@ -1458,6 +1558,10 @@ mod test {
     fn empty_serial_is_some() {
         let selector: DebugProbeSelector = "303a:1001:".try_into().unwrap();
 
+        let DebugProbeSelector::Usb(selector) = selector else {
+            panic!("Selector is not a USB selector");
+        };
+
         assert_eq!(selector.vendor_id, 0x303a);
         assert_eq!(selector.product_id, 0x1001);
         assert_eq!(selector.serial_number, Some(String::new()));
@@ -1466,5 +1570,48 @@ mod test {
         let matches_with_serial = selector.match_probe_selector(0x303a, 0x1001, Some("serial"));
         assert!(matches);
         assert!(!matches_with_serial);
+    }
+
+    #[test]
+    fn test_parsing_tcp_v4() {
+        let selector: DebugProbeSelector = "tcp://192.168.1.10:1234".try_into().unwrap();
+
+        let DebugProbeSelector::Tcp(selector) = selector else {
+            panic!("Selector is not a TCP selector");
+        };
+
+        assert_eq!(
+            selector.address,
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 10), 1234))
+        );
+    }
+
+    #[test]
+    fn test_parsing_tcp_v6() {
+        let selector: DebugProbeSelector = "tcp://[::1]:1234".try_into().unwrap();
+
+        let DebugProbeSelector::Tcp(selector) = selector else {
+            panic!("Selector is not a TCP selector");
+        };
+
+        assert_eq!(
+            selector.address,
+            SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 1234, 0, 0))
+        );
+    }
+
+    #[test]
+    fn test_parsing_tcp_hostname() {
+        let selector: DebugProbeSelector = "tcp://localhost:1234".try_into().unwrap();
+
+        let DebugProbeSelector::Tcp(selector) = selector else {
+            panic!("Selector is not a TCP selector");
+        };
+        assert_eq!(selector.address.port(), 1234);
+        assert!(
+            selector.address.ip().is_loopback(),
+            "Expected a loopback IP, got {}",
+            selector.address.ip()
+        );
     }
 }

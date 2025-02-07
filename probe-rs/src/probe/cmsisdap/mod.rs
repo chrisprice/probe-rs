@@ -15,8 +15,8 @@ use crate::{
             general::info::{CapabilitiesCommand, PacketCountCommand, SWOTraceBufferSizeCommand},
             CmsisDapError, RequestError,
         },
-        BatchCommand, DebugProbe, DebugProbeError, DebugProbeInfo, DebugProbeSelector,
-        JtagChainItem, ProbeFactory, WireProtocol,
+        BatchCommand, DebugProbe, DebugProbeError, DebugProbeInfo, JtagChainItem, ProbeFactory,
+        UsbDebugProbeSelector, WireProtocol,
     },
     CoreStatus,
 };
@@ -68,7 +68,10 @@ impl std::fmt::Display for CmsisDapFactory {
 }
 
 impl ProbeFactory for CmsisDapFactory {
-    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+    fn open_usb(
+        &self,
+        selector: &UsbDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         Ok(Box::new(CmsisDap::new_from_device(
             tools::open_device_from_selector(selector)?,
         )?))

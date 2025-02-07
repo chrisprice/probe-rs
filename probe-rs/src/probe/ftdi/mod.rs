@@ -13,8 +13,8 @@ use crate::{
     probe::{
         arm_debug_interface::{ProbeStatistics, RawProtocolIo, SwdSettings},
         common::{JtagDriverState, RawJtagIo},
-        DebugProbe, DebugProbeError, DebugProbeInfo, DebugProbeSelector, JTAGAccess,
-        ProbeCreationError, ProbeFactory, ScanChainElement, WireProtocol,
+        DebugProbe, DebugProbeError, DebugProbeInfo, JTAGAccess, ProbeCreationError, ProbeFactory,
+        ScanChainElement, UsbDebugProbeSelector, WireProtocol,
     },
 };
 use bitvec::prelude::*;
@@ -267,7 +267,10 @@ impl std::fmt::Display for FtdiProbeFactory {
 }
 
 impl ProbeFactory for FtdiProbeFactory {
-    fn open(&self, selector: &DebugProbeSelector) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
+    fn open_usb(
+        &self,
+        selector: &UsbDebugProbeSelector,
+    ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
         // Only open FTDI-compatible probes
         let Some(ftdi) = FTDI_COMPAT_DEVICES
             .iter()

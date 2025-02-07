@@ -6,7 +6,7 @@ use crate::probe::{stlink::StlinkError, usb_util::InterfaceExt};
 use std::collections::HashMap;
 
 use super::tools::{is_stlink_device, read_serial_number};
-use crate::probe::{DebugProbeSelector, ProbeCreationError};
+use crate::probe::{ProbeCreationError, UsbDebugProbeSelector};
 
 /// The USB Command packet size.
 const CMD_LEN: usize = 16;
@@ -87,7 +87,7 @@ pub trait StLinkUsb: std::fmt::Debug {
 
 // Copy of `Selector::matches` except it uses the stlink-specific read_serial_number
 // to handle the broken stlink-v2 serial numbers that need hex-encoding.
-fn selector_matches(selector: &DebugProbeSelector, info: &DeviceInfo) -> bool {
+fn selector_matches(selector: &UsbDebugProbeSelector, info: &DeviceInfo) -> bool {
     let res = info.vendor_id() == selector.vendor_id
         && info.product_id() == selector.product_id
         && selector
@@ -101,7 +101,7 @@ fn selector_matches(selector: &DebugProbeSelector, info: &DeviceInfo) -> bool {
 
 impl StLinkUsbDevice {
     /// Creates and initializes a new USB device.
-    pub fn new_from_selector(selector: &DebugProbeSelector) -> Result<Self, ProbeCreationError> {
+    pub fn new_from_selector(selector: &UsbDebugProbeSelector) -> Result<Self, ProbeCreationError> {
         let device = nusb::list_devices()
             .map_err(ProbeCreationError::Usb)?
             .filter(is_stlink_device)
