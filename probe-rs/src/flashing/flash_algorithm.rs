@@ -64,6 +64,9 @@ pub struct FlashAlgorithm {
 
     /// The encoding format accepted by the flash algorithm.
     pub transfer_encoding: TransferEncoding,
+
+    /// Whether to reattach the session after flashing.
+    pub reattach: bool,
 }
 
 impl FlashAlgorithm {
@@ -396,6 +399,7 @@ impl FlashAlgorithm {
             flash_properties: raw.flash_properties.clone(),
             transfer_encoding: raw.transfer_encoding.unwrap_or_default(),
             stack_overflow_check: raw.stack_overflow_check(),
+            reattach: raw.reattach.unwrap_or_default(),
         })
     }
 

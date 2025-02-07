@@ -588,6 +588,23 @@ impl Session {
         Err(XtensaError::NoXtensaTarget.into())
     }
 
+    /// Trigger the reattach sequence for the interface.
+    pub fn reattach(&mut self) -> Result<(), Error> {
+        match &mut self.interfaces {
+            ArchitectureInterface::Arm(interface) => {
+                let debug_sequence = match &self.target.debug_sequence {
+                    DebugSequence::Arm(seq) => seq.clone(),
+                    _ => unreachable!("Mismatch between architecture and sequence type!"),
+                };
+
+                Self::reattach_arm_interface(interface, &debug_sequence)
+            }
+            ArchitectureInterface::Jtag(_, _) => {
+                Err(Error::NotImplemented("Reattaching JTAG interfaces"))
+            }
+        }
+    }
+
     #[tracing::instrument(skip_all)]
     fn reattach_arm_interface(
         interface: &mut Box<dyn ArmProbeInterface>,

@@ -310,6 +310,10 @@ impl Flasher {
             return Err(FlashError::Verify);
         }
 
+        if self.flash_algorithm.reattach {
+            session.reattach().map_err(FlashError::Core)?;
+        }
+
         Ok(())
     }
 

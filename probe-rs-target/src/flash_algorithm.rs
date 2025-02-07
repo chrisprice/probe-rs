@@ -94,6 +94,10 @@ pub struct RawFlashAlgorithm {
     /// The encoding format accepted by the flash algorithm.
     #[serde(default)]
     pub transfer_encoding: Option<TransferEncoding>,
+
+    /// Whether to reattach the probe after flashing.
+    #[serde(default)]
+    pub reattach: Option<bool>,
 }
 
 impl RawFlashAlgorithm {
