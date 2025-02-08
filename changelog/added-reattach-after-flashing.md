@@ -1,0 +1,1 @@
+Added new optional reattach flag to FlashAlgorithm which runs the session interface's architecture specific reattach algorithm after flashing.
