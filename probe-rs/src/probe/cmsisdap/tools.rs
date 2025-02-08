@@ -238,6 +238,7 @@ pub fn open_tcp_device(
     match TcpStream::connect_timeout(&selector.address, TCP_CONNECT_TIMEOUT) {
         Ok(stream) => {
             Ok(CmsisDapDevice::Tcp {
+                address: selector.address,
                 handle: RefCell::new(stream),
                 // Start with a default 64-byte packet size for now, which is the most
                 // common size for CMSIS-DAPv1 HID devices. We'll request the actual
