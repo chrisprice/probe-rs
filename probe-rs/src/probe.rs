@@ -619,7 +619,7 @@ pub trait ProbeFactory: std::any::Any + std::fmt::Display + std::fmt::Debug + Sy
         &self,
         _selector: &TcpDebugProbeSelector,
     ) -> Result<Box<dyn DebugProbe>, DebugProbeError> {
-        Err(DebugProbeError::TargetNotFound)
+        Err(DebugProbeError::ProbeCouldNotBeCreated(ProbeCreationError::NotFound))
     }
 
     /// Returns a list of all available debug probes of the current type.
